@@ -62,8 +62,8 @@ test('an inconsistent enrollment is flagged', () => {
 });
 
 test('two near-identical people cause an identity crisis flag', () => {
-  const a = buildProfile(sigs('ines', 3, 5));
-  const b = buildProfile(sigs('ines', 3, 6));
+  const a = buildProfile(sigs('ines', 3, 12));
+  const b = buildProfile(sigs('ines', 3, 10));
   const [probe] = sigs('ines', 1, 7);
   assert.equal(alsoMatches(probe, [a, b]), 2);
 });
@@ -111,4 +111,66 @@ test('distance is symmetric and zero to itself', () => {
   const [a, b] = sigs('tom', 2, 8);
   assert.equal(distance(a, a), 0);
   assert.ok(Math.abs(distance(a, b) - distance(b, a)) < 1e-9);
+});
+
+/* Identification: one swing against everyone, with nobody named beforehand. */
+import { identify, collision, traits } from '../web/src/motion/matcher.js';
+
+const gallery = (keys, seed = 10) => keys.map((key) => ({ id: key, profile: buildProfile(sigs(key, 3, seed)) }));
+
+test('identify picks the right synthetic person out of everyone enrolled', () => {
+  const all = gallery(Object.keys(PEOPLE));
+  let right = 0;
+  let wrong = 0;
+  let total = 0;
+  for (const key of Object.keys(PEOPLE)) {
+    for (const s of sigs(key, 15, 321)) {
+      total++;
+      const r = identify(s, all);
+      if (r.outcome === 'recognized' && r.best.account.id === key) right++;
+      else if (r.outcome === 'recognized') wrong++;
+    }
+  }
+  assert.equal(wrong, 0, `recognised as the wrong person ${wrong}/${total}`);
+  assert.ok(right / total > 0.9, `recognised ${right}/${total}`);
+});
+
+test('identify does not hand a stranger the nearest account', () => {
+  let wrong = 0;
+  let total = 0;
+  for (const stranger of Object.keys(PEOPLE)) {
+    const others = gallery(Object.keys(PEOPLE).filter((k) => k !== stranger));
+    for (const s of sigs(stranger, 10, 654)) {
+      total++;
+      if (identify(s, others).outcome === 'recognized') wrong++;
+    }
+  }
+  assert.equal(wrong, 0, `strangers let in ${wrong}/${total}`);
+});
+
+test('identify with nobody enrolled is unknown', () => {
+  const [s] = sigs('tom', 1, 2);
+  assert.equal(identify(s, []).outcome, 'unknown');
+});
+
+test('two near-identical customers are an identity crisis, at log-in and at enrollment', () => {
+  const twins = [
+    { id: 'a', profile: buildProfile(sigs('ines', 3, 5)) },
+    { id: 'b', profile: buildProfile(sigs('ines', 3, 6)) },
+  ];
+  const [probe] = sigs('ines', 1, 7);
+  assert.equal(identify(probe, twins).outcome, 'ambiguous');
+  assert.equal(collision(twins[1].profile, [twins[0]]).account.id, 'a');
+  assert.equal(collision(buildProfile(sigs('gary', 3, 5)), [twins[0]]), null);
+});
+
+test('the report rows are measurements, and a person agrees with their own file', () => {
+  const profile = buildProfile(sigs('margaret', 3, 10));
+  const [own] = sigs('margaret', 1, 77);
+  const [other] = sigs('gary', 1, 77);
+  const mine = traits(own, profile);
+  assert.ok(mine.length >= 5);
+  assert.ok(mine.filter((r) => r.ok).length >= mine.length - 1, JSON.stringify(mine));
+  assert.ok(traits(other, profile).filter((r) => !r.ok).length >= 2);
+  assert.equal(traits(null, profile)[0].value, null);
 });

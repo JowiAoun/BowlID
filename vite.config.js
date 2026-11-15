@@ -4,6 +4,12 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   root: 'web',
   envDir: '..',
-  build: { outDir: '../dist', emptyOutDir: true, target: 'es2020' },
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+    target: 'es2020',
+    // BowlID is the front page. The bank it grew out of is kept at /bank.html.
+    rollupOptions: { input: { main: 'web/index.html', bank: 'web/bank.html' } },
+  },
   server: { port: 5173, strictPort: true },
 });

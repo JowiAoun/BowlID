@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A bank where your password is how you bowl.",
+  "description": "No usernames, no passwords. Your account is how you bowl.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
