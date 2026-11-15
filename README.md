@@ -6,6 +6,8 @@ You open a fake bank account by bowling with a Wii remote. To get back in, you b
 
 Made for the Stupid Ideas Hackathon (Ottawa F26). No real money or banking is involved.
 
+Try it in your browser: https://bowlometrics.pages.dev
+
 ![A gutter ball that still signs in](docs/screenshots/gutter-approved.png)
 
 ![A strike that is declined](docs/screenshots/strike-declined.png)

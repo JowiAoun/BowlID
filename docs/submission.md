@@ -35,14 +35,14 @@ The score is a similarity measure. It is not a probability and it is not securit
 
 ## Discord post for `#share-your-work`
 
-Fill in the names, handles and the demo link before posting.
+Fill in the names and handles before posting.
 
 > **Bowlometrics: your money, your swing** 🎳
 > Bowlometrics is a bank where your password is how you bowl. You open an account by bowling with a Wii remote, and to sign in you bowl again while the bank checks your swing against the one on file. The pins do not matter: a strike with the wrong swing is declined, and the owner's gutter ball is approved. Every attempt gets a Bowlometric Identity Score out of 100. Try it in your browser with no hardware at the demo link.
 >
 > Team: NAME (`@handle`), NAME (`@handle`), NAME (`@handle`)
 > GitHub: https://github.com/thomasnol/proof-of-human
-> Demo: DEMO LINK OR VIDEO
+> Demo: https://bowlometrics.pages.dev
 > Track: Stupidest Metric
 
 ## 60 second script
@@ -96,6 +96,6 @@ Take one more for Devpost with the real remote in someone's hand in front of the
 ## Before posting
 
 - [ ] Replace the names and handles in the README team section and in the Discord post.
-- [ ] Deploy with `npm run deploy` and paste the link into the Discord post and Devpost.
+- [ ] Paste the demo link, https://bowlometrics.pages.dev, into Devpost. Run `npm run deploy` again after any change.
 - [ ] Pick the Stupidest Metric track on Devpost.
 - [ ] Post in `#share-your-work`. A project that is not posted there is not judged.
