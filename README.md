@@ -90,7 +90,9 @@ Events carry the score, the verdict and the pin count. They never carry names, a
 1. Run `npx wrangler login` once.
 2. Run `npm run deploy`
 
-This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometrics` project. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
+This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometrics` project.
+
+Pushes to `main` also deploy by themselves, through `.github/workflows/deploy.yml`. That needs three repository secrets on GitHub: `CLOUDFLARE_API_TOKEN` (with Cloudflare Pages edit permission), `CLOUDFLARE_ACCOUNT_ID` and `VITE_AMPLITUDE_API_KEY`. Until the two Cloudflare secrets are set, the workflow builds and skips the publish step. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
 
 ## Technologies
 
