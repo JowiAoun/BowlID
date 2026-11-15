@@ -12,7 +12,6 @@ const LINES = {
   ann_gutter_approved: 'Zero pins. Full access.',
   ann_again: 'That was almost you. Bowl again.',
   u7_wait: 'I am not a robot.',
-  u7_roll: 'Loading. Loading. Loading.',
   u7_strike: 'Absolute cinema.',
   u7_gutter: 'Skill issue.',
   u7_denied: 'Sus.',
@@ -137,11 +136,6 @@ export const speech = {
   waiting(delay = 1200) {
     clearTimeout(waitTimer);
     waitTimer = setTimeout(() => { if (!busy && !queue.length) say(pick('u7_wait', 'chip_wait')); }, delay);
-  },
-
-  // While the ball is on its way, now and then.
-  rolling() {
-    if (!busy && !queue.length && Math.random() < 0.45) say('u7_roll');
   },
 
   clear() {

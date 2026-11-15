@@ -735,7 +735,6 @@ async function bowl(thrown, src, swing) {
   showPower(thrown.power);
   audio.thud();
   audio.setMusic(false);
-  speech.rolling();
   const pins = await lane.play(thrown);
   if (state.phase !== 'challenge') return;
   showBanner(pins);

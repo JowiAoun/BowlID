@@ -22,7 +22,7 @@ const midi = (n) => 440 * 2 ** ((n - 69) / 12);
 // Recorded sounds, by file name without the extension.
 const SAMPLE_KEYS = [
   'ann_strike', 'ann_gutter', 'ann_pins', 'ann_approved', 'ann_denied', 'ann_strike_denied', 'ann_gutter_approved', 'ann_again',
-  'u7_wait', 'u7_roll', 'u7_strike', 'u7_gutter', 'u7_denied', 'u7_approved',
+  'u7_wait', 'u7_strike', 'u7_gutter', 'u7_denied', 'u7_approved',
   'chip_wait', 'chip_strike', 'chip_gutter', 'chip_denied', 'chip_approved', 'chip_crisis',
   'sfx_cheer', 'sfx_groan', 'sfx_murmur', 'music',
 ];
