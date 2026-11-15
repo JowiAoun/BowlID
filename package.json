@@ -1,0 +1,25 @@
+{
+  "name": "bowlbank",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A bank where your password is how you bowl.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "bridge": "node bridge/bridge.mjs",
+    "test": "node --test",
+    "evaluate": "node tools/evaluate.mjs",
+    "deploy": "vite build && wrangler pages deploy dist --project-name bowlbank --branch main"
+  },
+  "dependencies": {
+    "@amplitude/analytics-browser": "^2.11.0",
+    "three": "^0.170.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
