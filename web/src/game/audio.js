@@ -10,6 +10,8 @@ let rollGain = null;
 let muted = false;
 let timer = null;
 let nextBar = 0;
+let room = null;
+let nextClatter = 0;
 let bar = 0;
 
 const midi = (n) => 440 * 2 ** ((n - 69) / 12);
@@ -46,30 +48,62 @@ function tone(freq, when, dur, { type = 'sine', gain = 0.2, to = null, attack = 
   o.stop(when + dur + 0.05);
 }
 
-// A light four-bar loop: walking bass, off-beat chords, a small tune on top.
-const BEAT = 60 / 116;
-const CHORDS = [[48, 64, 67, 69], [45, 60, 64, 67], [50, 60, 65, 69], [43, 59, 62, 65]];
+// A mallet note, like a marimba: a soft body and a short bright knock on top.
+function mallet(note, when, gain, out) {
+  const f = midi(note);
+  tone(f, when, 0.42, { type: 'sine', gain, attack: 0.004, out });
+  tone(f * 4, when, 0.07, { type: 'sine', gain: gain * 0.28, attack: 0.002, out });
+  tone(f * 2, when, 0.18, { type: 'triangle', gain: gain * 0.12, attack: 0.003, out });
+}
+
+// A hand clap: two quick bursts of noise.
+function clap(when, gain = 0.2) {
+  noise(0.05, when, { freq: 1300, q: 1.2, gain });
+  noise(0.08, when + 0.012, { freq: 1700, q: 0.9, gain: gain * 0.8 });
+}
+
+// A light eight-bar loop for a bowling afternoon: a strolling bass, soft off-beat chords,
+// a brushed shaker and a marimba tune on top.
+const BEAT = 60 / 108;
+const CHORDS = [
+  [53, 69, 72, 76], [50, 65, 69, 72], [55, 70, 74, 77], [48, 67, 70, 76],
+  [53, 69, 72, 76], [57, 67, 72, 76], [58, 65, 70, 74], [48, 64, 70, 72],
+];
 // [beat, note] pairs for each bar.
 const TUNE_NOTES = [
-  [[0, 76], [1, 79], [1.5, 81], [2.5, 79], [3.5, 76]],
-  [[0, 72], [1, 76], [1.5, 79], [2.5, 76], [3, 74]],
-  [[0, 77], [0.5, 81], [1.5, 77], [2, 74], [3, 77], [3.5, 81]],
-  [[0, 79], [1.5, 71], [2, 74], [3, 79]],
+  [[0, 72], [0.5, 77], [1.5, 81], [2, 79], [3, 77]],
+  [[0, 74], [1, 77], [1.5, 74], [2.5, 72], [3.5, 69]],
+  [[0, 70], [0.5, 74], [1.5, 79], [2, 77], [3, 74]],
+  [[0, 76], [1.5, 72], [2.5, 67], [3, 70], [3.5, 72]],
+  [[0, 81], [0.5, 77], [1.5, 84], [2, 81], [3, 77]],
+  [[0, 79], [1, 76], [1.5, 72], [2.5, 76], [3.5, 79]],
+  [[0, 77], [0.5, 74], [1.5, 70], [2, 74], [3, 77], [3.5, 79]],
+  [[0, 76], [1, 72], [2, 70], [2.5, 67], [3.5, 64]],
 ];
 
 function scheduleBar(t, n) {
-  const chord = CHORDS[n % 4];
+  const chord = CHORDS[n % 8];
   const root = chord[0];
-  [[0, root], [1.5, root + 7], [2, root], [3, root + 4], [3.5, root + 7]].forEach(([b, note]) => {
-    tone(midi(note - 12), t + b * BEAT, 0.28, { type: 'triangle', gain: 0.5, out: music });
+  [[0, root], [1.5, root + 7], [2, root + 12], [3, root + 7]].forEach(([b, note]) => {
+    tone(midi(note - 12), t + b * BEAT, 0.34, { type: 'sine', gain: 0.5, out: music });
+    tone(midi(note), t + b * BEAT, 0.12, { type: 'triangle', gain: 0.08, out: music });
   });
   for (const b of [0.5, 1.5, 2.5, 3.5]) {
-    for (const note of chord.slice(1)) tone(midi(note), t + b * BEAT, 0.16, { type: 'triangle', gain: 0.1, out: music });
-    noise(0.04, t + b * BEAT, { type: 'highpass', freq: 6000, gain: 0.05, out: music });
+    for (const note of chord.slice(1)) tone(midi(note), t + b * BEAT, 0.2, { type: 'sine', gain: 0.075, out: music });
   }
-  for (const [b, note] of TUNE_NOTES[n % 4]) {
-    tone(midi(note), t + b * BEAT, 0.3, { type: 'sine', gain: 0.22, out: music });
-    tone(midi(note + 12), t + b * BEAT, 0.12, { type: 'sine', gain: 0.05, out: music });
+  for (let b = 0; b < 4; b += 0.5) {
+    noise(0.05, t + b * BEAT, { type: 'highpass', freq: 7000, gain: b % 1 ? 0.035 : 0.018, out: music });
+  }
+  for (const [b, note] of TUNE_NOTES[n % 8]) mallet(note, t + b * BEAT, 0.24, music);
+}
+
+// Now and then, somebody on a far lane knocks a few pins over.
+function clatter(when) {
+  const out = room;
+  tone(90, when, 0.5, { gain: 0.5, to: 60, out });
+  for (let i = 0; i < 7; i++) {
+    const at = when + 0.55 + Math.random() * 0.35;
+    tone(380 + Math.random() * 420, at, 0.07, { type: 'triangle', gain: 0.45, to: 190, out });
   }
 }
 
@@ -78,6 +112,10 @@ function pump() {
   while (nextBar < ctx.currentTime + 0.4) {
     scheduleBar(nextBar, bar++);
     nextBar += BEAT * 4;
+  }
+  if (ctx.currentTime > nextClatter) {
+    clatter(ctx.currentTime + 0.1);
+    nextClatter = ctx.currentTime + 7 + Math.random() * 9;
   }
 }
 
@@ -112,6 +150,26 @@ export const audio = {
     rollSrc.connect(lp).connect(rollGain).connect(master);
     rollSrc.start();
 
+    // The room: a low murmur, and far-off lanes heard through it. Both are quiet.
+    room = ctx.createGain();
+    room.gain.value = 0.05;
+    const muffle = ctx.createBiquadFilter();
+    muffle.type = 'lowpass';
+    muffle.frequency.value = 900;
+    room.connect(muffle).connect(master);
+    const hum = ctx.createBufferSource();
+    hum.buffer = noiseBuf;
+    hum.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 320;
+    band.Q.value = 0.4;
+    const humGain = ctx.createGain();
+    humGain.gain.value = 0.5;
+    hum.connect(band).connect(humGain).connect(room);
+    hum.start();
+    nextClatter = ctx.currentTime + 4;
+
     nextBar = ctx.currentTime + 0.15;
     timer = setInterval(pump, 120);
     pump();
@@ -124,7 +182,9 @@ export const audio = {
 
   setMusic(on) {
     // 'off' is silence, for when the challenge window is closed.
-    if (music) music.gain.setTargetAtTime(on === 'off' ? 0 : on ? 0.16 : 0.05, ctx.currentTime, 0.2);
+    if (!music) return;
+    music.gain.setTargetAtTime(on === 'off' ? 0 : on ? 0.16 : 0.05, ctx.currentTime, 0.2);
+    room.gain.setTargetAtTime(on === 'off' ? 0 : 0.05, ctx.currentTime, 0.2);
   },
 
   roll(speed) {
@@ -139,7 +199,9 @@ export const audio = {
 
   thud() {
     if (!ctx) return;
-    tone(120, ctx.currentTime, 0.18, { gain: 0.6, to: 50 });
+    // The ball landing on the boards.
+    tone(130, ctx.currentTime, 0.2, { gain: 0.6, to: 48 });
+    noise(0.06, ctx.currentTime, { type: 'lowpass', freq: 700, gain: 0.25 });
   },
 
   // Pins: a burst of short woody knocks. Faster balls make more of them.
@@ -147,47 +209,59 @@ export const audio = {
     if (!ctx) return;
     const t = ctx.currentTime;
     const n = Math.round(6 + Math.min(10, speed));
-    noise(0.5, t, { type: 'highpass', freq: 900, gain: 0.35 });
+    tone(150, t, 0.22, { gain: 0.5, to: 60 });
+    noise(0.45, t, { freq: 1400, q: 0.6, gain: 0.3, to: 600 });
     for (let i = 0; i < n; i++) {
-      const at = t + Math.random() * 0.45 * (i / n) + i * 0.012;
-      tone(700 + Math.random() * 900, at, 0.07, { type: 'triangle', gain: 0.4, to: 260 });
-      noise(0.05, at, { freq: 2400, q: 2, gain: 0.3 });
+      const at = t + Math.random() * 0.5 * (i / n) + i * 0.014;
+      const f = 420 + Math.random() * 520;
+      tone(f, at, 0.08, { type: 'triangle', gain: 0.42, to: f * 0.5 });
+      tone(f * 2.7, at, 0.03, { type: 'sine', gain: 0.12 });
+      noise(0.04, at, { freq: 1900, q: 2, gain: 0.22 });
     }
   },
 
-  // Robots cheering: rising chirps.
+  // A strike: the seats applaud.
   cheer() {
     if (!ctx) return;
     const t = ctx.currentTime;
-    for (let i = 0; i < 26; i++) {
-      const at = t + Math.random() * 1.5;
-      const f = 700 + Math.random() * 1400;
-      tone(f, at, 0.12, { type: 'square', gain: 0.045, to: f * 1.6 });
+    // Applause from the seats, a few pleased beeps, and a little fanfare.
+    for (let i = 0; i < 34; i++) clap(t + 0.1 + Math.random() * 1.7, 0.07 + Math.random() * 0.08);
+    for (let i = 0; i < 9; i++) {
+      const at = t + 0.2 + Math.random() * 1.3;
+      const f = 900 + Math.random() * 900;
+      tone(f, at, 0.1, { type: 'sine', gain: 0.05, to: f * 1.5 });
     }
-    [72, 76, 79, 84, 88].forEach((n, i) => tone(midi(n), t + i * 0.09, 0.4, { type: 'triangle', gain: 0.3 }));
+    [72, 76, 79, 84].forEach((n, i) => mallet(n, t + i * 0.1, 0.4, master));
+    [84, 88, 91].forEach((n) => mallet(n, t + 0.52, 0.3, master));
   },
 
-  // Robots disappointed: two falling notes and some sagging beeps.
+  // A gutter ball. It should be a little funny.
   aww() {
     if (!ctx) return;
     const t = ctx.currentTime;
-    tone(midi(63), t, 0.32, { type: 'sawtooth', gain: 0.12, to: midi(62) });
-    tone(midi(58), t + 0.34, 0.6, { type: 'sawtooth', gain: 0.12, to: midi(54) });
-    for (let i = 0; i < 8; i++) {
-      const f = 500 + Math.random() * 500;
-      tone(f, t + Math.random() * 0.7, 0.2, { type: 'square', gain: 0.03, to: f * 0.6 });
+    // A slide whistle on the way down, then two sorry notes.
+    tone(1150, t, 0.7, { type: 'sine', gain: 0.22, to: 260, attack: 0.03 });
+    tone(midi(62), t + 0.8, 0.3, { type: 'triangle', gain: 0.3, to: midi(61) });
+    tone(midi(57), t + 1.12, 0.7, { type: 'triangle', gain: 0.3, to: midi(53) });
+    for (let i = 0; i < 5; i++) {
+      const f = 500 + Math.random() * 300;
+      tone(f, t + 0.8 + Math.random() * 0.6, 0.2, { type: 'sine', gain: 0.04, to: f * 0.6 });
     }
   },
 
   chime() {
     if (!ctx) return;
     const t = ctx.currentTime;
-    tone(midi(88), t, 0.5, { gain: 0.3 });
-    tone(midi(93), t + 0.12, 0.8, { gain: 0.3 });
+    // Three bell notes going up, with a soft ring left hanging.
+    [84, 88, 91].forEach((n, i) => {
+      tone(midi(n), t + i * 0.11, 0.9, { gain: 0.26 });
+      tone(midi(n) * 2.01, t + i * 0.11, 0.5, { gain: 0.07 });
+    });
+    tone(midi(96), t + 0.36, 1.3, { gain: 0.2 });
   },
 
   click() {
     if (!ctx) return;
-    tone(900, ctx.currentTime, 0.05, { type: 'triangle', gain: 0.2 });
+    tone(620, ctx.currentTime, 0.05, { type: 'triangle', gain: 0.2, to: 420 });
   },
 };

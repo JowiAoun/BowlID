@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeSignature, checkQuality, distance } from '../web/src/motion/signal.js';
-import { buildProfile, verify, scoreFromDistance, alsoMatches } from '../web/src/motion/matcher.js';
+import { buildProfile, verify, scoreFromDistance, alsoMatches, verifyClaim } from '../web/src/motion/matcher.js';
 import { syntheticSet, PEOPLE } from '../web/src/motion/synthetic.js';
 import { SwingRecorder } from '../web/src/motion/recorder.js';
 import { throwFromSwing } from '../web/src/game/throw.js';
@@ -173,4 +173,55 @@ test('the report rows are measurements, and a person agrees with their own file'
   assert.ok(mine.filter((r) => r.ok).length >= mine.length - 1, JSON.stringify(mine));
   assert.ok(traits(other, profile).filter((r) => !r.ok).length >= 2);
   assert.equal(traits(null, profile)[0].value, null);
+});
+
+/* A username was typed. The swing is checked against that one account. */
+
+const enrolled = (key, seed) => ({ id: key, username: key, profile: buildProfile(sigs(key, 3, seed)) });
+
+test('the owner opens their own account, and nobody else is named', () => {
+  const margaret = enrolled('margaret', 12);
+  const gary = enrolled('gary', 11);
+  let ok = 0;
+  const swings = sigs('margaret', 20, 99);
+  for (const s of swings) {
+    const res = verifyClaim(s, margaret, [gary]);
+    if (res.verdict === 'match') ok++;
+    assert.equal(res.crisis, false);
+    assert.equal(res.like, null);
+  }
+  assert.ok(ok / swings.length > 0.9, `owner got in ${ok}/${swings.length}`);
+});
+
+test('the wrong person on an account is declined and named', () => {
+  const margaret = enrolled('margaret', 10);
+  const gary = enrolled('gary', 11);
+  const tom = enrolled('tom', 12);
+  for (const s of sigs('gary', 10, 55)) {
+    const res = verifyClaim(s, margaret, [gary, tom]);
+    assert.equal(res.verdict, 'mismatch');
+    assert.equal(res.crisis, false);
+    assert.equal(res.like.account.id, 'gary');
+    assert.ok(res.like.score >= 70);
+  }
+});
+
+test('a stranger on an account is declined and nobody is blamed', () => {
+  const margaret = enrolled('margaret', 10);
+  const gary = enrolled('gary', 11);
+  const [s] = sigs('ines', 1, 55);
+  const res = verifyClaim(s, margaret, [gary]);
+  assert.equal(res.verdict, 'mismatch');
+  assert.equal(res.like, null);
+  assert.equal(verifyClaim(s, margaret, []).closest, null);
+});
+
+test('a swing that opens two accounts gets in and is flagged', () => {
+  const a = { id: 'a', username: 'a', profile: buildProfile(sigs('ines', 3, 12)) };
+  const b = { id: 'b', username: 'b', profile: buildProfile(sigs('ines', 3, 10)) };
+  const [probe] = sigs('ines', 1, 7);
+  const res = verifyClaim(probe, a, [b]);
+  assert.equal(res.verdict, 'match');
+  assert.equal(res.crisis, true);
+  assert.equal(res.like.account.id, 'b');
 });

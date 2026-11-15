@@ -1,20 +1,21 @@
-// BowlID. No usernames and no passwords: an account is opened by the way its owner bowls.
-// The page has two buttons. Either one opens a CAPTCHA-style window with a bowling lane in it.
-// The pins never decide anything. The swing is compared with every enrolled customer.
+// BowlID. A username and no password: the password is the way the account's owner bowls.
+// The page has a username field and two buttons. Either button opens a CAPTCHA-style window
+// with a bowling lane in it. The pins never decide anything. The swing is checked against the
+// one account the username names, and a swing that does not fit is an attempt on that account.
 // The bank this grew out of still lives in bank.html and bank-main.js.
 import { Lane } from './game/lane3d.js';
 import { throwFromSwing } from './game/throw.js';
 import { audio } from './game/audio.js';
 import { SwingRecorder } from './motion/recorder.js';
 import { makeSignature, checkQuality } from './motion/signal.js';
-import { MATCH_CONFIG, buildProfile, identify, collision, traits } from './motion/matcher.js';
+import { MATCH_CONFIG, buildProfile, identify, verifyClaim, collision, traits } from './motion/matcher.js';
 import { syntheticSet } from './motion/synthetic.js';
 import { WiiSource, MouseSource, replaySwing } from './input/sources.js';
-import { store } from './id/store.js';
+import { store, cleanUsername } from './id/store.js';
 import { track } from './analytics.js';
 import {
-  ID, ask, headline, verdictLine, traitLine, nameFor, pinsLabel, money,
-  SKILL_LINE, QUALITY, NO_SWING, STATEMENT, SOURCE_NOTE,
+  ID, ask, headline, verdictLine, whoElseLine, crisisLine, attemptLine, traitLine, nameFor, pinsLabel, money,
+  SKILL_LINE, QUALITY, NO_SWING, STATEMENT, SOURCE_NOTE, USERNAME_NOTE,
 } from './id/copy.js';
 import '@fontsource-variable/fredoka';
 
@@ -42,11 +43,20 @@ const state = {
   charge: null,
   replaying: false,
   sample: null,
+  username: '', // The username this challenge is for.
+  claim: null, // The account that username names, at log-in.
+  note: null, // Why the lane did not open: { text, kind }.
   enroll: null, // { throws: [{ sig, pins, bad, rec }], restarts }
-  login: null, // { bowls, pins, startedAt, over, finished }
+  login: null, // See newLogin().
   report: null,
-  session: null, // { account, report, created }
+  session: null, // { account, report, created, fresh }
 };
+
+// One log-in: every bowl until the account opens or the swing is turned away.
+const newLogin = () => ({
+  bowls: 0, pins: 0, lastPins: 0, startedAt: performance.now(), over: false, finished: false,
+  best: 0, like: null, src: null, logged: false,
+});
 
 // Every swing recorded in this session, kept in memory for the export link.
 const recorded = [];
@@ -67,25 +77,66 @@ function ledgerLine() {
   const el = $('ledger');
   if (!l.bowls) { el.textContent = ''; return; }
   const per = l.logins ? (l.loginBowls / l.logins).toFixed(1) : 'n/a';
-  el.textContent = `Branch ledger. Gutter balls let in: ${l.guttersIn}. Strikes turned away: ${l.strikesOut}. Identity crises: ${l.crises}. Bowls to recognise yourself: ${per}.`;
+  el.textContent = `Branch ledger. Gutter balls let in: ${l.guttersIn}. Strikes turned away: ${l.strikesOut}. Identity crises: ${l.crises}. Bowls per log-in: ${per}.`;
+}
+
+const inputKind = () => (state.mode === 'wii' ? 'wii' : 'pointer');
+
+// Under the widget: why the lane did not open, or else who is on file.
+function showNote() {
+  const el = $('widget-note');
+  if (state.note) {
+    el.className = `widget-note ${state.note.kind}`;
+    el.textContent = state.note.text;
+    return;
+  }
+  const kind = inputKind();
+  const n = store.accounts(kind).length;
+  const what = kind === 'wii' ? 'the Wii Remote' : 'the pointer (simulated)';
+  el.className = 'widget-note';
+  el.textContent = n ? `${n} account${n === 1 ? '' : 's'} on file for ${what}.` : `Nobody is on file for ${what} yet.`;
+}
+
+// Most and least themselves: everyone who has got in, by how much they bowled like themselves.
+function board() {
+  const el = $('board');
+  const rows = [...store.accounts(inputKind()), ...store.accounts('synthetic')]
+    .filter((a) => a.history.length)
+    .map((a) => ({ a, avg: a.history.reduce((sum, h) => sum + h.score, 0) / a.history.length }))
+    .sort((x, y) => y.avg - x.avg);
+  el.hidden = !rows.length;
+  if (!rows.length) return;
+  const body = rows.map(({ a, avg }, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <th>${esc(a.username)}${a.sample ? ' <i>sample</i>' : ''}</th>
+      <td>${Math.round(avg)} / 100</td>
+      <td>${a.history.length}</td>
+      <td>${a.attemptsEver}</td>
+    </tr>`).join('');
+  el.innerHTML = `
+    <h3>Most and least themselves</h3>
+    <table class="statement ranks">
+      <tr class="heads"><td></td><th>Customer</th><td>Average score as themselves</td><td>Log-ins</td><td>Declined attempts</td></tr>
+      ${body}
+    </table>`;
 }
 
 function home() {
-  const kind = state.mode === 'wii' ? 'wii' : 'pointer';
-  const n = store.accounts(kind).length;
-  const note = $('widget-note');
-  note.className = 'widget-note';
-  note.textContent = n
-    ? `${n} bowling identit${n === 1 ? 'y' : 'ies'} on file for ${kind === 'wii' ? 'the Wii Remote' : 'the pointer (simulated)'}.`
-    : `Nobody is on file for ${kind === 'wii' ? 'the Wii Remote' : 'the pointer (simulated)'} yet.`;
+  showNote();
+  // Usernames are not secret. The swing is.
+  $('known').innerHTML = store.accounts(inputKind()).map((a) => `<option value="${esc(a.username)}"></option>`).join('');
   $('widget-label').textContent = 'I am me';
   const links = [
-    '<a href="#" data-act="sample">No remote? Watch a sample customer log in (simulated).</a>',
+    '<a href="#" data-act="sample" data-swing="gary" data-as="gary">No remote? Watch Gary log in (simulated).</a>',
+    '<a href="#" data-act="sample" data-swing="gary" data-as="margaret">Watch Gary try Margaret\'s account (simulated).</a>',
+    '<a href="#" data-act="sample" data-swing="margaret" data-as="margaret">Watch Margaret log in (simulated).</a>',
     `<a href="#" data-act="practice">Practice lane${WHO ? `, recording as ${esc(WHO)}` : ''}</a>`,
   ];
   if (recorded.length) links.push(`<a href="#" data-act="export">Export ${recorded.length} recorded swing${recorded.length === 1 ? '' : 's'}</a>`);
   $('home-links').innerHTML = links.join('<br>');
   document.body.classList.toggle('wii', state.mode === 'wii');
+  board();
   ledgerLine();
 }
 
@@ -94,8 +145,32 @@ function setPhase(phase) {
   widget.dataset.state = phase === 'home' ? 'idle' : phase === 'account' ? 'verified' : 'checking';
   $('home').hidden = phase === 'account';
   $('inside').hidden = phase !== 'account';
-  $('create').disabled = $('login').disabled = phase !== 'home';
+  $('create').disabled = $('login').disabled = $('username').disabled = phase !== 'home';
+  if (phase === 'account') $('board').hidden = true;
   if (phase === 'home') home();
+}
+
+// The lane stays shut, and the page says why.
+function refuse(text) {
+  state.note = { text, kind: 'bad' };
+  showNote();
+  $('username').focus();
+}
+
+// Checks the typed username for this flow. Returns { username, claim }, or null after saying why not.
+function readUsername(flow) {
+  const username = cleanUsername($('username').value);
+  if (flow === 'enroll') {
+    const why = store.refuse(username);
+    if (why) { refuse(why === 'taken' ? USERNAME_NOTE.taken(username) : USERNAME_NOTE[why]); return null; }
+    return { username, claim: null };
+  }
+  if (!username) { refuse(USERNAME_NOTE.empty); return null; }
+  const claim = store.find(username);
+  if (!claim) { refuse(USERNAME_NOTE.missing(username)); return null; }
+  if (claim.sample) { refuse(USERNAME_NOTE.sample(username)); return null; }
+  if (claim.source !== inputKind()) { refuse(USERNAME_NOTE.wrongInput(username, claim.source)); return null; }
+  return { username, claim };
 }
 
 // What the A button on the remote presses right now.
@@ -119,7 +194,7 @@ function ensureLane() {
 function header() {
   const e = state.enroll;
   const done = e ? e.throws.filter((t) => !t.bad).length : 0;
-  const [top, main, sub] = ask(state.flow, done, MATCH_CONFIG.enrollThrows);
+  const [top, main, sub] = ask(state.flow, done, MATCH_CONFIG.enrollThrows, state.username);
   $('ask-top').textContent = top;
   $('ask-main').textContent = main;
   $('ask-sub').textContent = sub;
@@ -130,17 +205,31 @@ function header() {
   sim.textContent = kind === 'synthetic' ? 'Simulated: sample customer, formula swing' : 'Simulated swing: pointer, not a Wii Remote';
 }
 
-async function openChallenge(flow, sample = null) {
+// `sample` is the sample customer whose formula swing is replayed, and `as` the sample
+// customer whose account that swing is tried on.
+async function openChallenge(flow, sample = null, as = null) {
   if (state.phase !== 'home') return;
   audio.start();
   audio.click();
+  let who = { username: '', claim: null };
+  if (sample) {
+    const claim = store.find(as || sample);
+    who = { username: claim.username, claim };
+  } else if (flow !== 'practice') {
+    who = readUsername(flow);
+    if (!who) return;
+  }
+  state.note = null;
+  state.username = who.username;
+  state.claim = who.claim;
+  $('username').blur();
   state.flow = flow;
   state.sample = sample;
-  $('widget-label').textContent = flow === 'enroll' ? 'Learning who you are...' : 'Confirming that you are you...';
+  $('widget-label').textContent = flow === 'enroll' ? 'Learning how you bowl...' : flow === 'login' ? `Checking that you are ${who.username}...` : 'Opening the practice lane...';
   setPhase('checking');
   await wait(850);
   state.enroll = flow === 'enroll' ? { throws: [], restarts: 0 } : null;
-  state.login = { bowls: 0, pins: 0, startedAt: performance.now(), over: false, finished: false };
+  state.login = newLogin();
   state.busy = false;
   $('veil').hidden = false;
   document.body.classList.add('challenge');
@@ -150,7 +239,8 @@ async function openChallenge(flow, sample = null) {
   audio.setMusic(true);
   state.phase = 'challenge';
   header();
-  setStatus(flow === 'enroll' ? 'Create a swing that feels like you.' : flow === 'login' ? 'Show us your signature swing.' : '', 'plain');
+  controller();
+  setStatus(flow === 'enroll' ? 'Bowl a swing that feels like you.' : flow === 'login' ? `Bowl ${who.username}'s password.` : '', 'plain');
   hideBanner();
   hideReport();
   drawSlots();
@@ -179,8 +269,26 @@ function closeChallenge() {
   state.sample = null;
 }
 
+// A log-in that ends without the swing matching is one attempt on the account that was named.
+// It is counted once, however many bowls it took.
+function recordAttempt() {
+  const L = state.login;
+  if (state.flow !== 'login' || !state.claim || !L || L.logged || L.over || !L.bowls) return;
+  L.logged = true;
+  store.attempt(state.claim, {
+    score: L.best,
+    bowls: L.bowls,
+    pins: L.lastPins,
+    likeName: L.like ? L.like.account.username : null,
+    likeScore: L.like ? L.like.score : null,
+  });
+  track('account_attempt_declined', { best_score: L.best, bowls: L.bowls, intruder_identified: Boolean(L.like), source: L.src });
+}
+
 function cancel() {
   if (state.phase !== 'challenge') return;
+  // Walking away after an inconclusive bowl still counts as having tried.
+  recordAttempt();
   closeChallenge();
   setPhase('home');
 }
@@ -216,13 +324,31 @@ function beginBowl() {
   hideBanner();
   hideReport();
   $('info').hidden = true;
-  if (state.login.finished) state.login = { bowls: 0, pins: 0, startedAt: performance.now(), over: false, finished: false };
+  if (state.login.finished) state.login = newLogin();
+}
+
+// While B is held on a real remote, the bowler's arm follows the remote's tilt.
+// Gravity gives the tilt, so it is only read while the remote is not being thrown about.
+// This is drawing only. It is never part of the identity check. `?arm=off` turns it off.
+const ARM_LIVE = params.get('arm') !== 'off';
+let armAngle = 1.2;
+function driveArm(rows) {
+  if (!ARM_LIVE || state.mode !== 'wii' || state.replaying || !lane || recorder.state !== 'swing') return;
+  for (const r of rows) {
+    const g = Math.hypot(r[1], r[2], r[3]);
+    if (g < 0.6 || g > 1.5) continue;
+    // 0 hangs straight down, positive points at the pins, negative is behind the bowler.
+    let a = Math.atan2(r[3], -r[2]);
+    if (a < -2.6) a += Math.PI * 2;
+    armAngle += (a - armAngle) * 0.35;
+  }
+  lane.setArm(armAngle);
 }
 
 // The hub is what every source and every replay talks to.
 const hub = {
   emit(name, ...args) {
-    if (name === 'samples') recorder.push(args[0]);
+    if (name === 'samples') { recorder.push(args[0]); driveArm(args[0]); }
     else if (name === 'aim') {
       // The aim is locked while a swing is being read. The remote points everywhere during a swing.
       if (recorder.state === 'idle' && !state.charge) setAim(args[0]);
@@ -231,6 +357,7 @@ const hub = {
       state.pressAim = steadyAim();
       lane.setAim(state.pressAim);
       lane.setSwing('back');
+      armAngle = 1.2;
       beginBowl();
       recorder.press(args[0]);
     } else if (name === 'release') {
@@ -266,6 +393,30 @@ function setMode(mode) {
   chrome();
 }
 
+// A small controller light in the corner of the lane. Hardware trouble goes here, not across the game.
+const ctrl = document.createElement('button');
+ctrl.type = 'button';
+ctrl.className = 'ctrl';
+ctrl.hidden = true;
+laneEl.parentElement.appendChild(ctrl);
+ctrl.addEventListener('click', () => {
+  if (state.mode !== 'wii' || state.status.connected || state.busy) return;
+  // The pointer is offered, never assumed. The lane then says "simulated" for as long as it is used.
+  setMode('demo');
+  setStatus('Switched to the pointer. Swings are simulated and say so.', 'plain');
+});
+
+function controller() {
+  const s = state.status;
+  ctrl.hidden = state.mode !== 'wii' || Boolean(state.sample);
+  if (ctrl.hidden) return;
+  const plus = s.sensors && s.sensors.gyro ? ' + MotionPlus' : '';
+  ctrl.className = `ctrl ${s.connected ? 'ok' : 'bad'}`;
+  ctrl.innerHTML = s.connected ? `Wii Remote${plus}`
+    : `${s.bridge ? 'Wii Remote asleep' : 'No Wii Remote'} · <u>use the pointer (simulated)</u>`;
+  ctrl.title = s.connected ? 'Real Wii Remote motion' : s.bridge ? 'Press any button on the Wii Remote to wake it.' : 'The Wii Remote bridge is not running. Start it with ./scripts/start.sh';
+}
+
 function chrome() {
   const b = $('mode');
   const s = state.status;
@@ -279,6 +430,7 @@ function chrome() {
   }
   if (state.phase === 'home') home();
   if (state.phase === 'challenge') header();
+  controller();
   hint();
 }
 
@@ -290,7 +442,8 @@ function hint() {
   if (state.charge) { el.innerHTML = 'Let go of <kbd>Space</kbd> to bowl.'; return; }
   if (recorder.state === 'swing') { el.innerHTML = state.mode === 'wii' ? 'Reading your swing. <b>Let go of B</b> to release.' : 'Flick forward and <b>let go</b>.'; return; }
   if (state.mode === 'wii') {
-    if (!state.status.connected) { el.innerHTML = state.status.bridge ? 'Press any button on the Wii Remote to wake it.' : 'Wii Remote bridge not found. Run <kbd>./scripts/start.sh</kbd>'; return; }
+    // With no bridge at all, the controller light in the corner says so and offers the pointer.
+    if (!state.status.connected) { el.hidden = !state.status.bridge; el.innerHTML = 'Press any button on the Wii Remote to wake it.'; return; }
     const ir = source.irActive && source.irActive();
     el.innerHTML = `${ir ? 'Point to aim.' : 'Aim with <kbd>✚</kbd>.'} Hold <kbd>B</kbd>, swing, let go.`;
   } else {
@@ -484,13 +637,14 @@ function reportBody(r) {
   const lines = [];
   if (r.outcome === 'recognized') {
     const good = r.rows.filter((x) => x.ok).slice(0, 2).map(traitLine);
+    if (r.also) lines.push(r.also);
     lines.push(...good, SKILL_LINE);
   } else if (r.outcome === 'unknown' || r.outcome === 'unsure') {
     lines.push(...r.rows.filter((x) => x.ok === false).slice(0, 2).map(traitLine));
   }
   const versus = r.outcome === 'created' ? 'Your swings, now on file'
     : r.outcome === 'recognized' ? 'This swing against your swings on file'
-      : r.rows.length ? 'This swing against the closest customer on file' : '';
+      : `This swing against the swings ${r.username} left on file`;
   return `
     <div class="two">${pins}${score}</div>
     ${r.compare ? `<div class="graph"><canvas data-graph></canvas></div>
@@ -517,7 +671,7 @@ function showReport(r) {
   if (r.outcome === 'recognized' || r.outcome === 'created') {
     actions = '<button class="verify" type="button" data-act="enter" data-primary>Open my account</button>';
   } else if (r.final) {
-    actions = `<button class="verify" type="button" data-act="to-enroll" data-primary>Create an account</button>
+    actions = `<button class="verify" type="button" data-act="leave" data-primary>Close</button>
       <span>or bowl again.</span>`;
   } else {
     actions = `<span>Bowl again. Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
@@ -528,6 +682,7 @@ function showReport(r) {
       <small>BowlID biometric report</small>
       <h2>${esc(r.title)}</h2>
       <p>${esc(r.line)}</p>
+      ${r.also && r.outcome !== 'recognized' ? `<p class="also">${esc(r.also)}</p>` : ''}
     </div>
     ${reportBody(r)}
     <div class="actions">${actions}</div>`;
@@ -608,8 +763,8 @@ async function bowl(thrown, src, swing) {
 
 function afterPractice(sig, pins, src) {
   const res = identify(sig, store.accounts(src));
-  const guess = res.outcome === 'recognized' ? `Would open ${res.best.account.name} (score ${res.best.score}).`
-    : res.outcome === 'ambiguous' ? `Would be an identity crisis: ${res.best.account.name} or ${res.rival.account.name}.`
+  const guess = res.outcome === 'recognized' ? `Would open ${res.best.account.username}'s account (score ${res.best.score}).`
+    : res.outcome === 'ambiguous' ? `Would open two accounts: ${res.best.account.username} and ${res.rival.account.username}.`
       : res.best ? `Would not open any account (closest score ${res.best.score}).` : 'Nobody is on file.';
   setStatus(`${pinsLabel(pins)}. Swing ${recorded.length} recorded${WHO ? ` as ${WHO}` : ''}. ${guess}`, 'plain');
   settle(1400);
@@ -642,24 +797,25 @@ function afterEnroll(sig, pins, src, rec) {
   if (clash && e.restarts < 1) {
     e.restarts++;
     e.throws = [];
-    setStatus(`Your swing looks a lot like ${clash.account.name}'s. If that is you, cancel and log in. If not, bowl ${MATCH_CONFIG.enrollThrows} more with a flourish that is yours.`);
+    setStatus(`Your swing looks a lot like ${clash.account.username}'s. Two accounts would share one password. Bowl ${MATCH_CONFIG.enrollThrows} more with a flourish that is yours.`);
     track('enroll_clash', { input: src });
     next();
     return;
   }
   const taken = [...store.accounts(), ...store.accounts('synthetic')].map((a) => a.name);
   const name = nameFor(profile, good.map((t) => t.pins), taken, store.nextSerial());
-  const account = store.open(name, profile, src, clash ? clash.account.id : null);
-  if (!WHO) for (const t of e.throws) t.rec.participant = name;
+  const account = store.open(state.username, name, profile, src, clash ? clash.account.id : null);
+  if (!WHO) for (const t of e.throws) t.rec.participant = account.username;
   track('identity_created', { input: src, enroll_throws: e.throws.length, spread: profile.spread, consistent: profile.consistent, has_twin: Boolean(clash), motionplus: profile.gyro });
   drawSlots();
   const report = {
     outcome: 'created',
     final: true,
-    title: 'Identity created',
+    username: account.username,
+    title: 'Password set',
     line: clash
-      ? `You are now ${name}. Your password is your backswing, which you appear to share with ${clash.account.name}.`
-      : `You are now ${name}. Your password is now your backswing.`,
+      ? `${account.username}, your password is your backswing, which you appear to share with ${clash.account.username}. On the lanes you are ${name}.`
+      : `${account.username}, your password is now your backswing. On the lanes you are ${name}.`,
     pins: null,
     score: null,
     rows: traits(null, profile),
@@ -668,7 +824,7 @@ function afterEnroll(sig, pins, src, rec) {
     src,
   };
   state.login.over = true;
-  state.session = { account, report, created: true };
+  state.session = { account, report, created: true, fresh: 0 };
   audio.chime();
   showReport(report);
   lane.reset();
@@ -678,60 +834,80 @@ function afterEnroll(sig, pins, src, rec) {
 
 function afterLogin(sig, pins, src, rec) {
   const L = state.login;
+  const claim = state.claim;
+  // A sample customer's account is only ever tried with a formula swing.
+  if (claim.source !== src) {
+    setStatus('That is a sample customer. Only the formula swing is checked against that account.');
+    settle(1200);
+    return;
+  }
   L.bowls++;
   L.pins += pins.pins;
-  const gallery = store.accounts(src);
-  const res = identify(sig, gallery);
-  const outcome = res.outcome;
-  const final = outcome === 'recognized' || outcome === 'unknown' || L.bowls >= MATCH_CONFIG.maxLoginBowls;
+  L.lastPins = pins.pins;
+  L.src = src;
+  const others = store.accounts(src).filter((a) => a.id !== claim.id);
+  const res = verifyClaim(sig, claim, others);
+  const { verdict } = res;
+  L.best = Math.max(L.best, res.score);
+  if (res.like && (!L.like || res.like.score > L.like.score)) L.like = res.like;
+  const final = verdict !== 'retry' || L.bowls >= MATCH_CONFIG.maxLoginBowls;
   // Sample customers are formula swings. They stay out of the ledger.
-  if (src !== 'synthetic') store.bowl(outcome, pins);
-  track('login_bowl', {
-    bowlometric_identity_score: res.best ? res.best.score : null,
-    outcome,
+  if (src !== 'synthetic') store.bowl(verdict, pins, res.crisis);
+  // Scores and counts only. No usernames.
+  track('signin_attempt', {
+    bowlometric_identity_score: res.score,
+    verdict,
     pins: pins.pins,
     strike: pins.strike,
     gutter: pins.gutter,
     attempt: L.bowls,
-    identities_on_file: gallery.length,
-    input: src,
+    source: src,
+    sample_account: Boolean(claim.sample),
+    identity_crisis: res.crisis,
+    fits_another_customer: Boolean(res.like),
+    closest_other_score: res.closest,
+    identities_on_file: others.length + 1,
   });
-  const names = res.rival ? [res.best.account.name, res.rival.account.name] : [];
   const report = {
-    outcome,
+    outcome: verdict === 'match' ? 'recognized' : final ? 'unknown' : 'unsure',
     final,
     bowls: L.bowls,
-    title: gallery.length ? headline(outcome, final) : 'Identity unknown',
-    line: gallery.length ? verdictLine(outcome, pins, names, final) : 'Nobody is on file yet. There is no one for you to be.',
+    username: claim.username,
+    title: headline(verdict, final),
+    line: verdictLine(verdict, pins, claim.username, final),
+    also: null,
     pins,
-    score: res.best ? res.best.score : null,
-    rows: res.best ? traits(sig, res.best.account.profile) : [],
-    compare: res.best ? res.best.account : null,
+    score: res.score,
+    rows: traits(sig, claim.profile),
+    compare: claim,
     sig,
     src,
   };
-  if (outcome === 'recognized') {
-    const account = res.best.account;
-    report.title = 'Identity verified';
-    report.line = `${verdictLine(outcome, pins, names, final)} You are ${account.name}.`;
-    if (!WHO) rec.participant = account.name;
+  if (verdict === 'match') {
+    if (res.crisis) report.also = crisisLine(res.like.account.username);
+    if (!WHO) rec.participant = claim.username;
     L.over = true;
-    if (src !== 'synthetic') store.login(account, L.bowls, L.pins, pins.gutter);
+    const fresh = store.login(claim, L.bowls, L.pins, pins.gutter, res.score);
     track('login_done', {
       bowls_to_recognise_yourself: L.bowls,
       pins_before_account_access: L.pins,
       seconds_spent: Math.round((performance.now() - L.startedAt) / 1000),
       got_in_on_a_gutter_ball: pins.gutter,
+      attempts_since_last_visit: fresh,
       input: src,
     });
-    state.session = { account, report, created: false };
+    state.session = { account: claim, report, created: false, fresh };
     audio.chime();
     showReport(report);
     state.autoOpen = setTimeout(enter, 7000);
     settleQuietly();
     return;
   }
-  if (final) L.finished = true;
+  if (final) {
+    report.also = whoElseLine(claim.username, L.like);
+    L.finished = true;
+    recordAttempt();
+  }
   showReport(report);
   settle(1200);
 }
@@ -763,21 +939,87 @@ function enter() {
   setPhase('account');
 }
 
+const clock = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// Declined log-ins to this account. `fresh` of them happened since the owner was last in.
+function attemptsPanel(a, fresh) {
+  const total = a.attemptsEver;
+  if (!total) {
+    return `<h3>Attempts on your account</h3>
+      <p class="fine left">Nobody has typed your username and bowled the wrong swing. Yet.</p>`;
+  }
+  const rows = a.attempts.slice(-5).reverse().map((x, i) => `
+    <tr class="${i < fresh ? 'new' : ''}">
+      <td>${clock(x.t)}${i < fresh ? ' <b>new</b>' : ''}</td>
+      <td>${esc(attemptLine(x))}</td>
+      <td>${x.score} / 100 as you</td>
+    </tr>`).join('');
+  return `<h3>Attempts on your account</h3>
+    <p class="alarm ${fresh ? 'on' : ''}">${total} declined log-in${total === 1 ? '' : 's'} to this account${fresh ? `, ${fresh} since you were last here` : ''}.</p>
+    <table class="statement attempts">${rows}</table>
+    <p class="fine left">Each one typed your username and bowled a swing that did not match yours. One that fits nobody on file may be a stranger, or you on a bad day.</p>`;
+}
+
+// You-ness over time: the owner's scores as a line, declined attempts as dots, and the pass mark.
+function drawYouness(canvas, a) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth || canvas.width;
+  const h = canvas.clientHeight || canvas.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const g = canvas.getContext('2d');
+  g.scale(dpr, dpr);
+  const points = [
+    ...a.history.map((x) => ({ t: x.t, score: x.score, own: true })),
+    ...a.attempts.map((x) => ({ t: x.t, score: x.score, own: false })),
+  ].sort((p, q) => p.t - q.t);
+  const pad = 10;
+  const x = (i) => (points.length > 1 ? pad + (i / (points.length - 1)) * (w - pad * 2) : w / 2);
+  const y = (score) => h - 6 - (score / 100) * (h - 14);
+  g.strokeStyle = 'rgba(0,0,0,0.3)';
+  g.setLineDash([3, 3]);
+  g.beginPath();
+  g.moveTo(0, y(MATCH_CONFIG.scoreMatch));
+  g.lineTo(w, y(MATCH_CONFIG.scoreMatch));
+  g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = 'rgba(0,0,0,0.45)';
+  g.font = '10px Roboto, Arial, sans-serif';
+  g.fillText(`${MATCH_CONFIG.scoreMatch} passes`, 2, y(MATCH_CONFIG.scoreMatch) - 3);
+  g.strokeStyle = '#0f9d58';
+  g.lineWidth = 2;
+  g.lineJoin = 'round';
+  g.beginPath();
+  let started = false;
+  points.forEach((p, i) => {
+    if (!p.own) return;
+    if (started) g.lineTo(x(i), y(p.score)); else g.moveTo(x(i), y(p.score));
+    started = true;
+  });
+  g.stroke();
+  points.forEach((p, i) => {
+    g.fillStyle = p.own ? '#0f9d58' : '#d93025';
+    g.beginPath();
+    g.arc(x(i), y(p.score), p.own ? 3 : 4, 0, Math.PI * 2);
+    g.fill();
+  });
+}
+
 function renderAccount() {
-  const { account: a, report: r, created } = state.session;
+  const { account: a, report: r, created, fresh } = state.session;
   const el = $('inside');
   const rows = STATEMENT.map(([what, v]) => `<tr><td>${esc(what)}</td><td class="${v < 0 ? 'neg' : ''}">${money(v)}</td></tr>`).join('');
   const per = a.logins ? (a.bowls / a.logins).toFixed(1) : null;
+  const charted = a.history.length + a.attempts.length;
   el.style.setProperty('--c', a.color);
   el.innerHTML = `
     <div class="who">
       <div class="ball" aria-hidden="true"><i></i><i></i><i></i></div>
       <div>
         <small>${esc(ID.bank)} · signed in with ${esc(ID.name)}</small>
-        <h1 id="acct-name">${esc(a.name)}</h1>
-        <span>Account ${esc(a.number)}${a.sample ? ' · sample customer, formula swing' : a.source === 'pointer' ? ' · pointer identity (simulated)' : ''}</span>
+        <h1 id="acct-name">${esc(a.username)}</h1>
+        <span>${a.sample ? esc(a.name) : `On the lanes: ${esc(a.name)}`} · Account ${esc(a.number)}${a.sample ? ' · sample customer, formula swing' : a.source === 'pointer' ? ' · pointer password (simulated)' : ''}</span>
       </div>
-      ${a.sample ? '' : '<button class="link" type="button" data-act="rename">Rename</button>'}
     </div>
     <div class="balance">${money(a.balance)}</div>
     <p class="fine left">Available balance. Not real. Not withdrawable. Not even with a strike.</p>
@@ -785,16 +1027,22 @@ function renderAccount() {
       <h3>${created ? 'Your account is open. Your backswing is the only way in.' : `Why we let you in${r.pins && r.pins.gutter ? ', gutter ball and all' : ''}`}</h3>
       ${reportBody(r)}
     </div>
+    ${attemptsPanel(a, fresh)}
+    ${charted ? `<h3>You-ness over time</h3>
+    <div class="graph"><canvas data-youness></canvas></div>
+    <div class="key"><span><i style="background:#0f9d58"></i>You, getting in</span><span><i style="background:#d93025"></i>Declined attempts</span><span class="what">Score against your swings, oldest to newest</span></div>` : ''}
     <h3>Recent activity</h3>
     <table class="statement">${rows}</table>
-    <p class="fine left">${a.profile.templates.length} swings on file${a.profile.gyro ? ', with MotionPlus' : ''}. Recognised ${a.logins} time${a.logins === 1 ? '' : 's'}${per ? `, in ${per} bowl${per === '1.0' ? '' : 's'} on average` : ''}. Gutter balls that got in: ${a.guttersIn}.</p>
+    <p class="fine left">${a.profile.templates.length} swings on file${a.profile.gyro ? ', with MotionPlus' : ''}. Logged in ${a.logins} time${a.logins === 1 ? '' : 's'}${per ? `, in ${per} bowl${per === '1.0' ? '' : 's'} on average` : ''}. Gutter balls that got in: ${a.guttersIn}.</p>
     <div class="row">
       <button class="submit" type="button" id="signout">Sign out</button>
       ${a.sample ? '' : '<button class="link danger" type="button" data-act="close">Close this account</button>'}
     </div>
-    <p class="fine">No password was used. There is no password.</p>`;
+    <p class="fine">No password was typed. You bowled it.</p>`;
   $('inside').hidden = false;
   drawReportGraph(el, r);
+  const chart = el.querySelector('[data-youness]');
+  if (chart) drawYouness(chart, a);
   $('signout').addEventListener('click', signOut);
 }
 
@@ -808,18 +1056,8 @@ function signOut() {
 
 const actions = {
   enter,
-  'to-enroll': () => {
-    // Stay in the same window and switch to enrollment.
-    state.flow = 'enroll';
-    state.enroll = { throws: [], restarts: 0 };
-    state.login = { bowls: 0, pins: 0, startedAt: performance.now(), over: false, finished: false };
-    hideReport();
-    header();
-    drawSlots();
-    setStatus('Create a swing that feels like you.', 'plain');
-    hint();
-  },
-  sample: () => openChallenge('login', 'gary'),
+  leave: cancel,
+  sample: (el) => openChallenge('login', el.dataset.swing, el.dataset.as),
   practice: () => openChallenge('practice'),
   export: () => {
     const blob = new Blob([JSON.stringify(recorded)], { type: 'application/json' });
@@ -828,22 +1066,6 @@ const actions = {
     a.download = `bowlid-swings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
-  },
-  rename: () => {
-    const h = $('acct-name');
-    if (h.querySelector('input')) return;
-    const a = state.session.account;
-    h.innerHTML = `<input id="new-name" type="text" maxlength="32" value="${esc(a.name)}" aria-label="Display name. It is never used to log in." />`;
-    const input = $('new-name');
-    input.focus();
-    input.select();
-    const done = () => {
-      store.rename(a.id, input.value);
-      h.textContent = store.get(a.id).name;
-      state.session.account = store.get(a.id);
-    };
-    input.addEventListener('blur', done);
-    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); });
   },
   close: () => {
     store.close(state.session.account.id);
@@ -862,6 +1084,8 @@ document.addEventListener('click', (ev) => {
 $('create').addEventListener('click', () => openChallenge('enroll'));
 $('login').addEventListener('click', () => openChallenge('login'));
 $('cancel').addEventListener('click', cancel);
+$('username').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') $('login').click(); });
+$('username').addEventListener('input', () => { if (state.note) { state.note = null; showNote(); } });
 
 $('verify').addEventListener('click', () => {
   audio.click();
@@ -897,7 +1121,7 @@ $('help').addEventListener('click', () => {
       <li>The pins are for your own enjoyment. A gutter ball can get in. A strike can be turned away.</li>
       <li>Mouse or touch works too, as a simulation: press, pull back, flick forward, let go. The keyboard can bowl but has no backswing.</li>
     </ul>
-    There is no password reset. There is no password.`;
+    There is no password reset. Your password is your arm.`;
   el.hidden = !el.hidden;
 });
 
@@ -931,7 +1155,7 @@ function boot() {
 }
 
 // For automated checks and for rehearsal.
-window.bowlid = { state, hub, lane: null, store, recorded, replaySwing, syntheticSet, bowl, identify };
+window.bowlid = { state, hub, lane: null, store, recorded, replaySwing, syntheticSet, bowl, identify, verifyClaim };
 
 setPhase('home');
 boot();

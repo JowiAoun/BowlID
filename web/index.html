@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BowlID: your identity is in your swing</title>
-    <meta name="description" content="No usernames. No passwords. Your account is how you bowl. A joke made for the Stupid Ideas Hackathon." />
+    <title>BowlID: your password is your swing</title>
+    <meta name="description" content="A username, and no password. You log in by bowling. A joke made for the Stupid Ideas Hackathon." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%234a8ff0'/%3E%3Cpath d='M16 5c-2 0-3 1.6-3 3.4 0 1.5.8 2.4.8 3.6 0 1.6-2.3 4-2.3 8.2 0 3.6 1.7 6.8 4.5 6.8s4.500-3.200 4.500-6.800c0-4.200-2.300-6.600-2.300-8.200 0-1.200.8-2.100.8-3.600C19 6.600 18 5 16 5z' fill='%23fff'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/src/captcha.css" />
   </head>
   <body>
     <main class="page">
-      <!-- The front door. Two buttons, and nowhere to type. -->
+      <!-- The front door. A username to type, and no password field. -->
       <section id="home" class="card home">
         <svg class="logo" viewBox="0 0 64 64" width="60" height="60" aria-hidden="true">
           <circle cx="24" cy="42" r="16" fill="#202124" />
@@ -19,10 +19,16 @@
           <rect x="41" y="16.500" width="8" height="2.600" fill="#e0352b" />
         </svg>
         <h1>BowlID</h1>
-        <p class="tag">Your identity is in your swing.</p>
+        <p class="tag">Your password is your swing.</p>
 
-        <button id="create" class="big solid" type="button">Create your bowling identity<kbd class="remote">2</kbd></button>
-        <button id="login" class="big" type="button">Log in with your swing<kbd class="remote">A</kbd></button>
+        <label class="field" for="username">Username</label>
+        <input id="username" type="text" list="known" maxlength="20" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="Type a username" />
+        <datalist id="known"></datalist>
+        <p class="field">Password</p>
+        <p class="nopass">No field. You will bowl it.</p>
+
+        <button id="login" class="big solid" type="button">Log in with your swing<kbd class="remote">A</kbd></button>
+        <button id="create" class="big" type="button">Create this account<kbd class="remote">2</kbd></button>
 
         <div id="widget" class="widget" data-state="idle">
           <span class="check" aria-hidden="true"><span class="box"></span></span>
@@ -38,12 +44,15 @@
         </div>
         <p id="widget-note" class="widget-note" aria-live="polite"></p>
 
-        <p class="rule">No usernames. No passwords. Just bowling.</p>
+        <p class="rule">A username. No password. Just bowling.</p>
         <p class="fine" id="home-links"></p>
       </section>
 
       <!-- The account that the swing opened. -->
       <section id="inside" class="card inside" hidden></section>
+
+      <!-- Most and least themselves: everyone who has logged in, by how much they bowled like themselves. -->
+      <section id="board" class="card board" hidden></section>
 
       <p id="ledger" class="ledger"></p>
     </main>
