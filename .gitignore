@@ -12,3 +12,6 @@ __pycache__/
 # Editor & system files
 .DS_Store
 *.log
+
+# Recorded swings stay local
+recordings/*.json

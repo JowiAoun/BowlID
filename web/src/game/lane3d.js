@@ -232,8 +232,8 @@ export class Lane {
       this.slow = 0;
     }
 
-    let camZ = -2.7;
-    let camY = 1.25;
+    let camZ = -3.3;
+    let camY = 1.45;
     if (this.world) {
       this.acc += dt;
       const h = 1 / 120;
@@ -260,8 +260,8 @@ export class Lane {
           m.position.y = Math.sin(tilt) * 0.055;
         }
       });
-      camZ = Math.min(LANE.pinZ - 4.6, Math.max(-2.7, b.gone ? LANE.pinZ - 4.6 : b.z - 3.4));
-      camY = 1.25 - 0.25 * Math.min(1, Math.max(0, camZ + 2.7) / 6);
+      camZ = Math.min(LANE.pinZ - 4.6, Math.max(-3.3, b.gone ? LANE.pinZ - 4.6 : b.z - 3.4));
+      camY = 1.45 - 0.4 * Math.min(1, Math.max(0, camZ + 3.3) / 6);
       if (this.world.done && this.onDone) {
         const done = this.onDone;
         this.onDone = null;
@@ -286,7 +286,7 @@ export class Lane {
     cam.x += (0 - cam.x) * k;
     cam.y += (camY - cam.y) * k;
     cam.z += (Z(camZ) - cam.z) * k;
-    this.camera.lookAt(0, 0.25, cam.z - 7.5);
+    this.camera.lookAt(0, 0.2, cam.z - 7);
     this.renderer.render(this.scene, this.camera);
   }
 }

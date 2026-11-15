@@ -106,6 +106,7 @@ export class MouseSource extends Source {
     this.pos = null;
     this.prev = null;
     this.vel = [0, 0];
+    this.acc = [0, 0];
     this.tick = this.tick.bind(this);
     this.move = this.move.bind(this);
     this.press = this.press.bind(this);
@@ -166,10 +167,13 @@ export class MouseSource extends Source {
       const vx = (this.pos[0] - this.prev.x) / dt;
       const vy = (this.pos[1] - this.prev.y) / dt;
       // Screen up is the forward swing. 0.08 puts a normal flick at 2 to 4 g, like a real swing.
-      const ax = clamp(((vx - this.vel[0]) / dt) * 0.08, -6, 6);
-      const ay = clamp((-(vy - this.vel[1]) / dt) * 0.08, -6, 6);
+      const rawX = clamp(((vx - this.vel[0]) / dt) * 0.08, -6, 6);
+      const rawY = clamp((-(vy - this.vel[1]) / dt) * 0.08, -6, 6);
       this.vel = [vx, vy];
-      this.emit('samples', [[now, ax, ay, 1, null, null, null]]);
+      // Pointer events arrive in uneven steps. A light filter keeps the signal from spiking.
+      this.acc[0] += (rawX - this.acc[0]) * 0.35;
+      this.acc[1] += (rawY - this.acc[1]) * 0.35;
+      this.emit('samples', [[now, this.acc[0], this.acc[1], 1, null, null, null]]);
     }
     this.prev = { t: now, x: this.pos[0], y: this.pos[1] };
   }
