@@ -826,7 +826,7 @@ function afterEnroll(sig, pins, src, rec) {
   }
   // Somebody already on file bowls like this. Ask once for a swing with more of this person in it.
   const clash = collision(profile, store.accounts(src));
-  if (clash && e.restarts < 1) {
+  if (clash && e.restarts < MATCH_CONFIG.twinRedos) {
     e.restarts++;
     e.throws = [];
     setStatus(`Your swing looks a lot like ${clash.account.username}'s. Two accounts would share one password. Bowl ${MATCH_CONFIG.enrollThrows} more with a flourish that is yours.`);
