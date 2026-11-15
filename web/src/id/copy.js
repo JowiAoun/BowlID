@@ -1,10 +1,10 @@
-// Everything Bowl ID says. It is a biometric security product and it takes itself seriously.
+// Everything Bowlometrics says. It is a biometric security product and it takes itself seriously.
 
 export const ID = {
-  name: 'Bowl ID',
+  name: 'Bowlometrics',
   tagline: 'Your password is your swing.',
   bank: 'BowlBank',
-  sign: { name: 'Bowl ID', tagline: 'YOUR BACKSWING IS YOUR PASSWORD  ·  LANE 67', color: '#4a8ff0' },
+  sign: { name: 'Bowlometrics', tagline: 'YOUR BACKSWING IS YOUR PASSWORD  ·  LANE 67', color: '#4a8ff0' },
 };
 
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
