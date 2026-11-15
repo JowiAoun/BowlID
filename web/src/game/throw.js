@@ -30,7 +30,8 @@ export function throwFromSwing(swing, aim = 0) {
   // so the ball goes where the aim line points.
   const hook = nt ? clamp(twist / nt / 500, -1, 1) : clamp((ns ? side / ns : 0) * 0.1, -0.25, 0.25);
   return {
-    speed: 4.4 + 6.2 * power,
+    // A weak swing rolls slowly and leaves pins standing.
+    speed: 3.0 + 7.6 * power,
     startX: clamp(aim, -1, 1) * 0.36,
     angle: clamp(aim, -1, 1) * 0.022,
     hook,

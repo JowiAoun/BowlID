@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A bank where your password is how you bowl.",
+  "description": "No usernames, no passwords. Your account is how you bowl.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +11,8 @@
     "bridge": "node bridge/bridge.mjs",
     "test": "node --test",
     "evaluate": "node tools/evaluate.mjs",
-    "deploy": "./scripts/deploy.sh"
+    "deploy": "./scripts/deploy.sh",
+    "deploy:bowlid": "BOWLBANK_PAGES_PROJECT=bowlid ./scripts/deploy.sh"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.11.0",

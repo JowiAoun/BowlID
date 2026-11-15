@@ -8,13 +8,15 @@ export const LANE = {
   spacing: 0.3048,
   ballR: 0.108,
   pinR: 0.06,
-  fallenR: 0.1,
+  fallenR: 0.13,
 };
 LANE.deckEnd = LANE.pinZ + 1.15;
 LANE.wallX = LANE.halfW + LANE.gutterW;
 
-const BALL_M = 6.8;
-const PIN_M = 1.55;
+// Feel of the pin action. Tuned with a sweep over aim and power.
+// Tuned with a sweep over aim and power. The pocket either side of the head pin strikes.
+// A ball straight down the middle usually leaves a pin or two, and a slow ball leaves more.
+export const TUNE = { ballM: 9, pinM: 1.55, eBall: 0.62, ePin: 0.8, drag: 2.6, nudge: 2.0 };
 
 export function pinLayout() {
   const pins = [];
@@ -114,7 +116,7 @@ export function step(world, dt) {
       p.fallT += dt;
       const sp = Math.hypot(p.vx, p.vz);
       if (sp > 0) {
-        const drop = Math.min(sp, 2.2 * dt);
+        const drop = Math.min(sp, TUNE.drag * dt);
         p.vx -= (p.vx / sp) * drop;
         p.vz -= (p.vz / sp) * drop;
       }
@@ -132,7 +134,7 @@ export function step(world, dt) {
     for (const p of pins) {
       if (p.gone) continue;
       const r = p.down ? LANE.fallenR : LANE.pinR;
-      if (collide(ball, p, LANE.ballR, r, BALL_M, PIN_M, 0.62)) knock(p, world);
+      if (collide(ball, p, LANE.ballR, r, TUNE.ballM, TUNE.pinM, TUNE.eBall)) knock(p, world);
     }
   }
   for (let i = 0; i < pins.length; i++) {
@@ -143,11 +145,11 @@ export function step(world, dt) {
       if (b.gone || (!a.down && !b.down)) continue;
       const ra = a.down ? LANE.fallenR : LANE.pinR;
       const rb = b.down ? LANE.fallenR : LANE.pinR;
-      if (!collide(a, b, ra, rb, PIN_M, PIN_M, 0.55)) continue;
+      if (!collide(a, b, ra, rb, TUNE.pinM, TUNE.pinM, TUNE.ePin)) continue;
       // A standing pin that only gets a light nudge stays up.
       for (const p of [a, b]) {
         if (p.down) continue;
-        if (Math.hypot(p.vx, p.vz) > 0.3) knock(p, world);
+        if (Math.hypot(p.vx, p.vz) > TUNE.nudge) knock(p, world);
         else { p.vx = 0; p.vz = 0; }
       }
     }

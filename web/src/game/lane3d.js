@@ -2,9 +2,14 @@
 import * as THREE from 'three';
 import { LANE, createWorld, step, result, pinLayout } from './physics.js';
 import { BRAND } from '../brand.js';
+import { Bowler } from './bowler.js';
+import { Crowd } from './crowd.js';
 
 const SKY = 0xcdeaf8;
+const WARM = 0xfff1d6;
 const BALL = 0x16a06c;
+// Where the bowler stands, behind the foul line.
+const STAND_Z = -0.32;
 
 // Lane z runs away from the player. Three.js looks down negative z, so flip it.
 const Z = (z) => -z;
@@ -52,8 +57,21 @@ function laneTexture() {
   });
 }
 
-function signTexture() {
+function signTexture(sign) {
   return canvasTexture(1024, 256, (g, w, h) => {
+    if (sign) {
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = sign.color;
+      g.fillRect(12, 12, w - 24, h - 24);
+      g.fillStyle = '#ffffff';
+      g.textAlign = 'center';
+      g.font = '700 118px "Fredoka Variable", "Trebuchet MS", Arial, sans-serif';
+      g.fillText(sign.name, w / 2, 140, w - 90);
+      g.font = '600 36px "Fredoka Variable", "Trebuchet MS", Arial, sans-serif';
+      g.fillText(sign.tagline, w / 2, 206, w - 90);
+      return;
+    }
     g.fillStyle = '#0f3d2e';
     g.fillRect(0, 0, w, h);
     g.strokeStyle = '#d9ad5b';
@@ -111,19 +129,30 @@ function pinMesh() {
 }
 
 export class Lane {
-  constructor(container) {
+  // `cast` adds the bowler, the robots and the third-person camera. `sign` is { name, tagline, color }.
+  constructor(container, { cast = false, sign = null } = {}) {
     this.container = container;
+    this.cast = cast;
+    this.sign = sign;
+    this.active = true;
+    this.swing = 'idle';
+    this.reaction = null;
+    this.cut = true;
+    this.look = new THREE.Vector3();
+    this.hand = new THREE.Vector3();
+    this.onHit = null;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
     this.renderer.setPixelRatio(this.pixelRatio);
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(SKY);
-    this.scene.fog = new THREE.Fog(SKY, 15, 34);
+    const sky = cast ? WARM : SKY;
+    this.scene.background = new THREE.Color(sky);
+    this.scene.fog = new THREE.Fog(sky, 15, 34);
     this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 70);
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xbfd9e8, 1.9));
+    this.scene.add(new THREE.HemisphereLight(0xffffff, cast ? 0xf2d9b0 : 0xbfd9e8, 1.9));
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
     sun.position.set(-2, 6, 4);
     this.scene.add(sun);
@@ -216,7 +245,7 @@ export class Lane {
       }
     }
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 60), new THREE.MeshLambertMaterial({ color: 0xdfeef6 }));
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 60), new THREE.MeshLambertMaterial({ color: this.cast ? 0xf3e2c4 : 0xdfeef6 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, -0.5, Z(12));
     this.scene.add(floor);
@@ -225,20 +254,21 @@ export class Lane {
     const wallZ = Z(LANE.deckEnd + 0.5);
     const pit = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.9), new THREE.MeshBasicMaterial({ color: 0x16283a }));
     pit.position.set(0, 0.25, wallZ);
-    const mask = new THREE.Mesh(new THREE.PlaneGeometry(30, 1.5), new THREE.MeshLambertMaterial({ color: 0x2f8fd8 }));
-    mask.position.set(0, 1.45, wallZ + 0.02);
+    const maskH = this.cast ? 2.7 : 1.5;
+    const mask = new THREE.Mesh(new THREE.PlaneGeometry(30, maskH), new THREE.MeshLambertMaterial({ color: 0x2f8fd8 }));
+    mask.position.set(0, 0.7 + maskH / 2, wallZ + 0.02);
     const trim = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.08), new THREE.MeshBasicMaterial({ color: 0xffffff }));
     trim.position.set(0, 0.72, wallZ + 0.03);
-    const upper = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), new THREE.MeshLambertMaterial({ color: 0xeaf5fb }));
+    const upper = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), new THREE.MeshLambertMaterial({ color: this.cast ? 0xfff6e6 : 0xeaf5fb }));
     upper.position.set(0, 5.2, wallZ);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.55), new THREE.MeshBasicMaterial({ map: signTexture() }));
-    sign.position.set(0, 1.42, wallZ + 0.05);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(this.cast ? 4.4 : 2.2, this.cast ? 1.1 : 0.55), new THREE.MeshBasicMaterial({ map: signTexture(this.sign) }));
+    sign.position.set(0, this.cast ? 1.72 : 1.42, wallZ + 0.05);
     this.scene.add(pit, mask, trim, upper, sign);
 
     this.ball = new THREE.Group();
     this.ball.add(new THREE.Mesh(
       new THREE.SphereGeometry(LANE.ballR, 32, 24),
-      new THREE.MeshPhongMaterial({ color: BALL, shininess: 160, specular: 0xffffff }),
+      new THREE.MeshPhongMaterial({ color: this.cast ? 0x2f6fe0 : BALL, shininess: 160, specular: 0xffffff }),
     ));
     // Finger holes, so you can see the ball roll.
     for (const [x, y] of [[-0.03, 0.03], [0.03, 0.03], [0, -0.025]]) {
@@ -250,7 +280,7 @@ export class Lane {
 
     this.aimTex = aimTexture();
     this.aimLine = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.16, 3.4),
+      new THREE.PlaneGeometry(0.16, this.cast ? 6 : 3.4),
       new THREE.MeshBasicMaterial({ map: this.aimTex, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     this.aimLine.rotation.x = -Math.PI / 2;
@@ -258,6 +288,89 @@ export class Lane {
     this.scene.add(this.aimLine);
 
     this.pins = pinLayout().map(() => this.reflected(pinMesh()));
+    if (this.cast) this.buildCast();
+  }
+
+  // The approach, the bowler, the robots and the wall behind them.
+  buildCast() {
+    const approach = new THREE.Mesh(new THREE.PlaneGeometry(14, 7), new THREE.MeshPhongMaterial({ color: 0xf1d6a2, shininess: 50 }));
+    approach.rotation.x = -Math.PI / 2;
+    approach.position.set(0, -0.003, Z(-3.5));
+    const foul = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.05), new THREE.MeshBasicMaterial({ color: 0x8a5a2b }));
+    foul.rotation.x = -Math.PI / 2;
+    foul.position.set(0, -0.002, Z(-0.02));
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(16, 5), new THREE.MeshBasicMaterial({ color: 0xfff1d6, side: THREE.DoubleSide }));
+    back.position.set(0, 2.5, Z(-7));
+    const band = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.5), new THREE.MeshBasicMaterial({ color: 0x4a8ff0, side: THREE.DoubleSide }));
+    band.position.set(0, 1.9, Z(-6.98));
+    this.scene.add(approach, foul, back, band);
+
+    // Two rows of seats behind the approach.
+    const seatMat = new THREE.MeshPhongMaterial({ color: 0x4a8ff0, shininess: 40 });
+    for (const [z, y] of [[-4.9, 0.25], [-5.9, 0.55]]) {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(6.4, y, 0.8), seatMat);
+      bench.position.set(0, y / 2, Z(z));
+      this.scene.add(bench);
+    }
+    // A rack of spare balls beside the approach.
+    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 1.0), new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 }));
+    rack.position.set(-1.25, 0.15, Z(-1.3));
+    this.scene.add(rack);
+    [0xff6f59, 0xffd23f, 0x3ccf91].forEach((c, i) => {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(LANE.ballR, 20, 14), new THREE.MeshPhongMaterial({ color: c, shininess: 140, specular: 0xffffff }));
+      b.position.set(-1.25, 0.3 + LANE.ballR * 0.8, Z(-1.3 - 0.3 + i * 0.3));
+      this.scene.add(b);
+    });
+
+    this.bowler = new Bowler();
+    this.scene.add(this.bowler.group);
+    this.ballShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(LANE.ballR * 1.1, 16),
+      new THREE.MeshBasicMaterial({ color: 0x3b2a14, transparent: true, opacity: 0.25, depthWrite: false }),
+    );
+    this.ballShadow.rotation.x = -Math.PI / 2;
+    this.ballShadow.renderOrder = 4;
+    this.scene.add(this.ballShadow);
+
+    const spots = [];
+    const railX = LANE.wallX + 0.25;
+    // Small robots perched on the rails beside the lane, facing it.
+    for (let i = 0; i < 6; i++) {
+      const z = 2.2 + i * 2.1;
+      spots.push([-railX, 0.1, Z(z), Math.PI / 2, 0.85], [railX, 0.1, Z(z + 1), -Math.PI / 2, 0.85]);
+    }
+    // Bigger ones standing beside the approach.
+    spots.push([1.5, 0, Z(-0.9), -2.3, 1.5], [2.1, 0, Z(-0.2), -2.2, 1.35], [-1.9, 0, Z(-0.3), 2.3, 1.4], [-2.5, 0, Z(-1.2), 2.2, 1.55]);
+    // And the audience on the seats behind, facing down the lane.
+    for (let i = 0; i < 7; i++) {
+      spots.push([-2.7 + i * 0.9, 0.25, Z(-4.9), Math.PI, 1.5], [-2.25 + i * 0.9, 0.55, Z(-5.9), Math.PI, 1.5]);
+    }
+    this.crowd = new Crowd(this.scene, spots);
+  }
+
+  // 'back' while the button is held, 'forward' once it is released, 'idle' otherwise.
+  setSwing(state) { this.swing = state; }
+
+  // Shows the bowler and the robots reacting. `kind` is 'strike', 'miss' or 'gutter'.
+  react(kind) {
+    if (!this.cast) return;
+    this.reaction = kind;
+    this.cut = true;
+    this.bowler.set(kind === 'strike' ? 'cheer' : 'sad');
+    this.crowd.setMood(kind === 'strike' ? 'cheer' : 'sad');
+  }
+
+  // Stop drawing while the challenge is closed.
+  setActive(on) {
+    this.active = on;
+    if (on) { this.last = performance.now(); this.cut = true; this.resize(); }
+  }
+
+  // Speed of the ball while it is rolling on the lane, for the rumble sound.
+  rollSpeed() {
+    if (!this.world || this.world.ball.gone) return 0;
+    const b = this.world.ball;
+    return Math.hypot(b.vx, b.vz);
   }
 
   resize() {
@@ -266,7 +379,7 @@ export class Lane {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // A tall, narrow window needs a wider view to keep the whole lane in.
-    this.camera.fov = w / h < 0.9 ? 52 : 38;
+    this.camera.fov = w / h < 0.9 ? 52 : this.cast ? 40 : 38;
     this.camera.updateProjectionMatrix();
   }
 
@@ -283,6 +396,10 @@ export class Lane {
   reset() {
     this.world = null;
     this.resetPins();
+    this.swing = 'idle';
+    if (this.reaction) this.cut = true;
+    this.reaction = null;
+    if (this.cast) { this.bowler.set('address'); this.crowd.setMood('idle'); }
   }
 
   setAim(aim) {
@@ -300,11 +417,14 @@ export class Lane {
     this.world = createWorld(throwParams);
     this.acc = 0;
     this.hitSeen = false;
+    this.swing = 'idle';
+    if (this.cast) this.bowler.set('follow');
     return new Promise((resolve) => { this.onDone = resolve; });
   }
 
   frame(now) {
     requestAnimationFrame(this.frame);
+    if (!this.active) return;
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.clock += dt;
@@ -321,7 +441,10 @@ export class Lane {
     let camZ = -3.3;
     let camY = 1.45;
     if (this.world) {
-      this.acc += dt;
+      // The last metre before the pins and the first moment of the crash run slower, for suspense.
+      const w0 = this.world;
+      const near = this.cast && !w0.ball.gutter && w0.ball.z > LANE.pinZ - 1.3 && (w0.hitTime == null || w0.time - w0.hitTime < 0.4);
+      this.acc += dt * (near ? 0.5 : 1);
       const h = 1 / 120;
       while (this.acc >= h && !this.world.done) {
         step(this.world, h);
@@ -332,6 +455,7 @@ export class Lane {
       if (!this.hitSeen && this.world.hitTime != null && !b.gutter) {
         this.hitSeen = true;
         this.shake = 0.05 + 0.006 * Math.hypot(b.vx, b.vz);
+        if (this.onHit) this.onHit(Math.hypot(b.vx, b.vz));
       }
       // A short hop off the hand at the start of the roll.
       const hop = Math.max(0, 0.05 - Math.abs(this.world.time - 0.12) * 0.42);
@@ -369,10 +493,12 @@ export class Lane {
       this.ball.position.set(x, LANE.ballR + 0.012 + Math.sin(this.clock * 2.6) * 0.012, Z(0));
       this.ball.rotation.set(0, this.clock * 0.6, 0);
     }
+    if (this.cast) this.frameCast(dt);
 
     this.aimLine.visible = !this.world;
     if (!this.world) {
-      this.aimLine.position.set(this.aimShown * 0.36 + this.aimShown * 0.022 * 2, 0.006, Z(2));
+      const mid = this.cast ? 3.4 : 2;
+      this.aimLine.position.set(this.aimShown * 0.36 + this.aimShown * 0.022 * mid, 0.006, Z(mid));
       this.aimLine.rotation.z = -this.aimShown * 0.022;
       this.aimTex.offset.y = -(this.clock * 0.9) % 1;
       this.aimLine.material.opacity = 0.65 + 0.25 * Math.sin(this.clock * 4);
@@ -385,14 +511,75 @@ export class Lane {
     }
 
     const cam = this.camera.position;
-    const k = Math.min(1, dt * 5);
-    cam.x += (0 - cam.x) * k;
-    cam.y += (camY - cam.y) * k;
-    cam.z += (Z(camZ) - cam.z) * k;
+    const k = this.cut ? 1 : Math.min(1, dt * 5);
     this.shake = Math.max(0, this.shake - dt * 0.22);
     const sx = (Math.random() - 0.5) * this.shake;
     const sy = (Math.random() - 0.5) * this.shake;
-    this.camera.lookAt(sx, 0.2 + sy, cam.z - 7);
+    if (this.cast) {
+      const v = this.view;
+      cam.x += (v.x - cam.x) * k;
+      cam.y += (v.y - cam.y) * k;
+      cam.z += (v.z - cam.z) * k;
+      this.look.x += (v.lx - this.look.x) * k;
+      this.look.y += (v.ly - this.look.y) * k;
+      this.look.z += (v.lz - this.look.z) * k;
+      this.camera.lookAt(this.look.x + sx, this.look.y + sy, this.look.z);
+    } else {
+      cam.x += (0 - cam.x) * k;
+      cam.y += (camY - cam.y) * k;
+      cam.z += (Z(camZ) - cam.z) * k;
+      this.camera.lookAt(sx, 0.2 + sy, cam.z - 7);
+    }
+    this.cut = false;
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // The bowler, the robots and the third-person camera.
+  frameCast(dt) {
+    const bw = this.bowler;
+    const w = this.world;
+    const ballX = this.aimShown * 0.36;
+    if (!w) {
+      bw.set(this.swing === 'back' ? 'back' : this.swing === 'forward' ? 'forward' : 'address');
+      bw.group.position.x = ballX - 0.2;
+    } else if (!this.reaction && bw.state === 'follow' && bw.t > 1) {
+      bw.set('watch');
+    }
+    bw.group.position.z = Z(STAND_Z);
+    bw.update(dt, this.clock);
+    if (!w) {
+      // The ball rides in the bowling hand until the throw starts.
+      bw.group.updateMatrixWorld(true);
+      bw.grip.getWorldPosition(this.hand);
+      this.ball.position.set(this.hand.x, Math.max(LANE.ballR, this.hand.y - 0.02), this.hand.z - 0.03);
+      this.ball.rotation.set(0.4, 0, 0);
+    }
+    const bp = this.ball.position;
+    this.ballShadow.visible = this.ball.visible && !(w && w.ball.gutter);
+    this.ballShadow.position.set(bp.x, 0.008, bp.z);
+    this.ballShadow.scale.setScalar(Math.max(0.4, 1 - (bp.y - LANE.ballR) * 1.2));
+
+    const rolling = w && !this.reaction;
+    if (rolling) this.crowd.setMood(w.hitTime == null && w.ball.z > 7 ? 'tense' : 'idle');
+    const bx = bw.group.position.x;
+    if (rolling && !w.ball.gone) this.crowd.update(dt, this.clock, bp);
+    else this.crowd.update(dt, this.clock, { x: rolling ? 0 : bx, z: rolling ? Z(LANE.pinZ) : Z(STAND_Z) });
+
+    const v = this.view || (this.view = {});
+    if (this.reaction) {
+      // Looking back up the lane at the bowler and the seats.
+      v.x = bx + 0.7; v.y = 0.95; v.z = Z(STAND_Z + 2.4);
+      v.lx = bx; v.ly = 0.66; v.lz = Z(STAND_Z);
+    } else if (w) {
+      const b = w.ball;
+      const stop = LANE.pinZ - 4.2;
+      const cz = b.gone ? stop : Math.min(stop, Math.max(-3.9, b.z - 2.9));
+      const low = Math.min(1, Math.max(0, (cz + 1.5) / 3.5));
+      v.x = b.x * 0.5; v.y = 1.78 - 0.86 * low; v.z = Z(cz);
+      v.lx = b.x * 0.35; v.ly = -0.05 + 0.5 * low; v.lz = Z(cz + 7);
+    } else {
+      v.x = ballX * 0.6 + 0.12; v.y = 1.78; v.z = Z(-3.9);
+      v.lx = ballX * 0.5; v.ly = -0.05; v.lz = Z(3.2);
+    }
   }
 }
