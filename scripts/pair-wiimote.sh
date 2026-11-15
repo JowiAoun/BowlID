@@ -20,6 +20,19 @@ is_connected() {
   bluetoothctl info "$1" 2>/dev/null | grep -q 'Connected: yes'
 }
 
+# Connected over Bluetooth is not enough: the kernel driver must also make the input devices.
+# When it could not, fix-driver.sh gives it another go.
+finish() {
+  echo "Wii remote $1 is connected."
+  for _ in 1 2 3 4 5 6; do
+    grep -q 'Name="Nintendo Wii Remote' /proc/bus/input/devices 2>/dev/null && exit 0
+    sleep 0.5
+  done
+  echo "The kernel driver did not start for the remote. Trying to fix it."
+  "$(dirname "$0")/fix-driver.sh"
+  exit $?
+}
+
 echo "Scanning for a Wii remote for ${SCAN_SECONDS}s. Press the red SYNC button now."
 bluetoothctl --timeout "$SCAN_SECONDS" scan on >/dev/null 2>&1 &
 SCAN_PID=$!
@@ -30,8 +43,7 @@ while [ "$SECONDS" -lt "$END" ]; do
   MAC="$(find_remote)"
   if [ -n "$MAC" ]; then
     if is_connected "$MAC"; then
-      echo "Wii remote $MAC is connected."
-      exit 0
+      finish "$MAC"
     fi
     echo "Found $MAC. Connecting."
     bluetoothctl trust "$MAC" >/dev/null 2>&1
@@ -39,8 +51,7 @@ while [ "$SECONDS" -lt "$END" ]; do
     timeout 15 bluetoothctl pair "$MAC" >/dev/null 2>&1
     timeout 15 bluetoothctl connect "$MAC" >/dev/null 2>&1
     if is_connected "$MAC"; then
-      echo "Wii remote $MAC is connected."
-      exit 0
+      finish "$MAC"
     fi
   fi
   sleep 1
