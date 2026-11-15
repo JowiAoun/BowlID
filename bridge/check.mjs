@@ -4,13 +4,11 @@
 //
 // Usage: node bridge/check.mjs [--seconds 6]
 
-process.env.UV_THREADPOOL_SIZE ||= '16';
-
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { EV_KEY, EV_ABS, EV_SYN, SYN_REPORT, BUTTON_NAMES } from './evdev.mjs';
 import { Normalizer } from './normalize.mjs';
-import { scanRemotes, openEventDevice, readHidAttr } from './reader.mjs';
+import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes } from './reader.mjs';
 
 const secondsIndex = process.argv.indexOf('--seconds');
 const seconds = secondsIndex >= 0 ? Number(process.argv[secondsIndex + 1]) || 6 : 6;
@@ -61,7 +59,24 @@ else report('warn', 'Bluetooth link', 'no Wii remote is connected over Bluetooth
 // Input devices from the driver.
 const remotes = scanRemotes();
 if (remotes.length === 0) {
-  report('fail', 'Wii remote', 'no Wii remote input devices found', 'Pair the remote first: ./scripts/pair-wiimote.sh');
+  const unbound = unboundWiiRemotes();
+  if (unbound.length > 0 || btRemote) {
+    // The remote is connected, but the kernel driver did not make its input devices.
+    const kernelLog = run('journalctl', ['-k', '-b', '--no-pager', '-g', 'wiimote']) || '';
+    const noMemory = /Can't alloc device|failed with error -12/.test(kernelLog);
+    report(
+      'fail',
+      'Wii remote',
+      noMemory
+        ? 'connected over Bluetooth, but the kernel driver could not start: it found no large free block of memory ("Can\'t alloc device" in the kernel log)'
+        : 'connected over Bluetooth, but the kernel driver did not start for it',
+      noMemory
+        ? 'Run ./scripts/fix-driver.sh (no sudo). If that fails, close heavy apps, run: echo 1 | sudo tee /proc/sys/vm/compact_memory, then run it again. A reboot also fixes it.'
+        : 'Run ./scripts/fix-driver.sh, then look at the kernel log: journalctl -k | grep -i wiimote',
+    );
+  } else {
+    report('fail', 'Wii remote', 'no Wii remote input devices found', 'Pair the remote first: ./scripts/pair-wiimote.sh');
+  }
   console.log('\nResult: no remote to test. Nothing was verified.');
   process.exit(1);
 }
@@ -158,7 +173,7 @@ else if (seen.accel.frames > 0) {
 } else report('warn', 'Accelerometer', 'detected and readable, but no samples arrived', 'Move the remote while the check runs. The kernel only reports changes.');
 
 // MotionPlus.
-if (!remote.parts.gyro) report('warn', 'MotionPlus', `not detected (extension: ${extension || 'unknown'})`, 'Push the MotionPlus fully into the remote and wait 5 seconds. The app works without it, using the accelerometer only.');
+if (!remote.parts.gyro) report('info', 'MotionPlus', 'not attached. The app works without it, using the accelerometer only. If one is plugged in, push it in fully and wait 5 seconds.');
 else if (seen.gyro.error) report('fail', 'MotionPlus', `detected, but not readable (${errorText(seen.gyro.error)})`, errorFix(seen.gyro.error));
 else if (seen.gyro.frames > 0) report('ok', 'MotionPlus', `verified working (${seen.gyro.frames} samples, peak ${gyroPeak.toFixed(0)} deg/s)`);
 else report('warn', 'MotionPlus', 'detected and readable, but no samples arrived', 'Turn the remote while the check runs.');

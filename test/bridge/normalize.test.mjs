@@ -120,3 +120,20 @@ test('reset clears everything after a disconnect', () => {
   norm.reset();
   assert.equal(norm.flushSamples(), null);
 });
+
+test('an IR frame that came too soon is sent on the next flush, so losing the light is never missed', () => {
+  const { norm, clock, abs, syn } = setup();
+  abs('ir', ABS_HAT0X, 500, 0);
+  abs('ir', ABS_HAT0X + 1, 300, 0);
+  assert.equal(syn('ir', 0)[0].pts.length, 1);
+  assert.equal(norm.flushIr(), null);
+
+  // The light is lost 10 ms later, inside the throttle window.
+  abs('ir', ABS_HAT0X, 1023, 10);
+  abs('ir', ABS_HAT0X + 1, 1023, 10);
+  assert.deepEqual(syn('ir', 10), []);
+  assert.equal(norm.flushIr(), null);
+  clock.now += 15;
+  assert.deepEqual(norm.flushIr().pts, []);
+  assert.equal(norm.flushIr(), null);
+});

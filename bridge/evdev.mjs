@@ -110,3 +110,8 @@ export function findWiiRemotes(devices) {
   }
   return [...remotes.values()];
 }
+
+// True for the HID id of a Wii remote (product 0306) or a Wii Remote Plus (product 0330) on Bluetooth.
+export function isWiimoteHidId(id) {
+  return /^0005:057E:(0306|0330)\.[0-9A-F]{4}$/i.test(id);
+}

@@ -43,6 +43,7 @@ export class Normalizer {
     this.gyroT = -Infinity;
     this.irRaw = new Array(8).fill(IR_NO_POINT);
     this.lastIrT = -Infinity;
+    this.irHeld = false;
     this.pending = [];
     this.lastSampleT = -Infinity;
   }
@@ -105,7 +106,11 @@ export class Normalizer {
         const t = this.time(ev.ms);
         if (t - this.lastIrT >= IR_MIN_INTERVAL_MS) {
           this.lastIrT = t;
+          this.irHeld = false;
           out.push({ type: 'ir', t: round(t, 2), pts: this.irPoints() });
+        } else {
+          // Too soon after the last one. Keep it for flushIr, so the newest state is never lost.
+          this.irHeld = true;
         }
       }
     }
@@ -122,6 +127,18 @@ export class Normalizer {
       pts.push([round(1 - x / IR_MAX_X, 4), round(Math.min(1, y / IR_MAX_Y), 4)]);
     }
     return pts;
+  }
+
+  // Called about every 20 ms. Returns the IR message that was held back, or null.
+  // The kernel only reports changes, so the last frame before the light is lost must go out.
+  flushIr() {
+    if (!this.irHeld) return null;
+    const t = Math.max(this.lastT, this.now());
+    if (t - this.lastIrT < IR_MIN_INTERVAL_MS) return null;
+    this.lastT = t;
+    this.lastIrT = t;
+    this.irHeld = false;
+    return { type: 'ir', t: round(t, 2), pts: this.irPoints() };
   }
 
   // Called about every 20 ms. Returns a `samples` message, or null when there is none.

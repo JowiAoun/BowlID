@@ -3,12 +3,8 @@
 // and sends its buttons, motion and IR points to the browser on ws://127.0.0.1:8765.
 // It never makes data up. With no remote, it says so and keeps looking.
 
-// Each open device holds one worker thread in a blocking read. The default pool of 4
-// would be used up by the remote's four devices.
-process.env.UV_THREADPOOL_SIZE ||= '16';
-
 import { Normalizer, DEFAULT_COUNTS_PER_G } from './normalize.mjs';
-import { scanRemotes, openEventDevice, readHidAttr } from './reader.mjs';
+import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes } from './reader.mjs';
 import { startServer } from './server.mjs';
 
 const SCAN_MS = 1000;
@@ -16,6 +12,7 @@ const FLUSH_MS = 20;
 
 const MSG_NONE = 'No Wii remote found. Press 1+2 on the remote, or run ./scripts/pair-wiimote.sh.';
 const MSG_LOST = 'Wii remote disconnected. Press any button on it to reconnect.';
+const MSG_NO_DRIVER = 'A Wii remote is connected over Bluetooth, but the kernel driver could not start for it. Run ./scripts/fix-driver.sh.';
 
 const countsPerG = Number(process.env.BOWLBANK_ACCEL_COUNTS_PER_G) || DEFAULT_COUNTS_PER_G;
 const norm = new Normalizer({ countsPerG });
@@ -37,7 +34,7 @@ function publish() {
       connected: false,
       device: null,
       sensors: { buttons: false, accel: false, gyro: false, ir: false },
-      message: permissionProblem || (everConnected ? MSG_LOST : MSG_NONE),
+      message: permissionProblem || (unboundWiiRemotes().length > 0 ? MSG_NO_DRIVER : everConnected ? MSG_LOST : MSG_NONE),
     });
     return;
   }
@@ -110,8 +107,9 @@ server.ready.then(
     setInterval(scan, SCAN_MS);
     setInterval(() => {
       if (!remote) return;
-      const msg = norm.flushSamples();
-      if (msg) server.broadcast(msg);
+      for (const msg of [norm.flushSamples(), norm.flushIr()]) {
+        if (msg) server.broadcast(msg);
+      }
     }, FLUSH_MS);
   },
   (err) => {
@@ -124,5 +122,4 @@ server.ready.then(
   },
 );
 
-// A blocked device read would keep the process alive, so exit directly.
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0));
