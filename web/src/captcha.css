@@ -702,3 +702,23 @@ body.wii .v-btn kbd { display: inline-block; }
   .wiimote, .v-panel, .v-card, .v-punch, .verdict { animation: none; }
   .v-solo.shown .v-mark path { animation: none; stroke-dashoffset: 0; }
 }
+
+/* "Bowl again": a small card in the corner. It leaves the lane in view and goes away by itself. */
+
+.report.compact {
+  top: 10px;
+  right: 10px;
+  bottom: auto;
+  width: min(340px, 72%);
+  padding-bottom: 0;
+  overflow: hidden;
+  border: 1px solid #c1c1c1;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+  z-index: 6;
+}
+.report.compact > :not(.head):not(.actions) { display: none; }
+.report.compact .head { margin-bottom: 0; }
+.report.compact .head h2 { font-size: 20px; }
+.report.compact .actions { position: static; margin: 0 -14px; padding: 7px 14px 8px; }
+.stage:has(.report.compact:not([hidden])) .banner { left: 50%; }

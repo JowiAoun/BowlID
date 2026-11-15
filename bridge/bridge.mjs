@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bowlometrics input bridge. Reads a real Wii remote through the kernel hid-wiimote driver
+// Bowl ID input bridge. Reads a real Wii remote through the kernel hid-wiimote driver
 // and sends its buttons, motion and IR points to the browser on ws://127.0.0.1:8765.
 // It never makes data up. With no remote, it says so and keeps looking.
 
@@ -10,6 +10,9 @@ import {
 } from './reader.mjs';
 import { startServer } from './server.mjs';
 
+import { spawn, execFile } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
 loadEnv();
 
 const SCAN_MS = Number(process.env.BOWLBANK_SCAN_MS) || 1000;
@@ -18,6 +21,47 @@ const FLUSH_MS = 20;
 const MSG_NONE = 'No Wii remote found. Press 1+2 on the remote, or run ./scripts/pair-wiimote.sh.';
 const MSG_LOST = 'Wii remote disconnected. Press any button on it to reconnect.';
 const MSG_NO_DRIVER = 'A Wii remote is connected over Bluetooth, but the kernel driver could not start for it. Run ./scripts/fix-driver.sh.';
+const MSG_FIXING = 'The Wii remote is connected, but its driver did not start. Fixing that now. This takes a few seconds.';
+
+// The bridge repairs the two usual problems by itself, so nobody has to run a script mid-demo.
+// BOWLBANK_AUTO_FIX=0 turns that off.
+const AUTO = !TEST_DEVICES && process.env.BOWLBANK_AUTO_FIX !== '0';
+const FIX_SCRIPT = fileURLToPath(new URL('../scripts/fix-driver.sh', import.meta.url));
+let fixing = false;
+let lastFix = 0;
+let connecting = false;
+let lastConnect = 0;
+
+// The driver could not start: tidy memory and restart the remote's input link.
+function autoFix() {
+  if (!AUTO || fixing || Date.now() - lastFix < 8000) return;
+  fixing = true;
+  console.log('The Wii remote driver did not start. Running scripts/fix-driver.sh.');
+  const child = spawn(FIX_SCRIPT, { stdio: 'ignore' });
+  const done = (code) => {
+    fixing = false;
+    lastFix = Date.now();
+    console.log(code === 0 ? 'The driver is fixed.' : 'The driver fix did not work this time. Trying again shortly.');
+  };
+  child.on('exit', done);
+  child.on('error', () => done(1));
+}
+
+// No remote is connected: ask Bluetooth to connect every Wii remote this laptop already knows.
+// A remote that is flashing after 1+2 or SYNC waits for the laptop to make this call.
+function autoConnect() {
+  if (!AUTO || connecting || Date.now() - lastConnect < 6000) return;
+  connecting = true;
+  execFile('bluetoothctl', ['devices'], { timeout: 4000 }, (err, out) => {
+    const macs = err ? [] : out.split('\n').filter((l) => /Nintendo RVL/i.test(l)).map((l) => l.split(' ')[1]);
+    let left = macs.length;
+    const finish = () => { connecting = false; lastConnect = Date.now(); };
+    if (!left) { finish(); return; }
+    for (const mac of macs) {
+      execFile('bluetoothctl', ['connect', mac], { timeout: 9000 }, () => { if (--left === 0) finish(); });
+    }
+  });
+}
 
 const countsPerG = Number(process.env.BOWLBANK_ACCEL_COUNTS_PER_G) || DEFAULT_COUNTS_PER_G;
 const norm = new Normalizer({ countsPerG, zero: accelZeroFromEnv() });
@@ -41,7 +85,7 @@ function publish() {
       connected: false,
       device: null,
       sensors: { buttons: false, accel: false, gyro: false, ir: false },
-      message: permissionProblem || (unboundWiiRemotes().length > 0 ? MSG_NO_DRIVER : everConnected ? MSG_LOST : MSG_NONE),
+      message: permissionProblem || (unboundWiiRemotes().length > 0 ? (AUTO ? MSG_FIXING : MSG_NO_DRIVER) : everConnected ? MSG_LOST : MSG_NONE),
     });
     return;
   }
@@ -109,12 +153,15 @@ function scan() {
       if (!remote.readers[role] && !remote.denied.has(path)) openPart(role, path);
     }
   }
+  if (!remote) {
+    if (unboundWiiRemotes().length > 0) autoFix(); else autoConnect();
+  }
   publish();
 }
 
 server.ready.then(
   () => {
-    console.log(`Bowlometrics bridge listening on ws://127.0.0.1:${server.port}`);
+    console.log(`Bowl ID bridge listening on ws://127.0.0.1:${server.port}`);
     if (TEST_DEVICES) console.log('TEST MODE: reading made-up devices. This is not a real Wii remote.');
     scan();
     setInterval(scan, SCAN_MS);

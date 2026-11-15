@@ -3,7 +3,10 @@ import { distance } from './signal.js';
 
 export const MATCH_CONFIG = {
   enrollThrows: 3,
-  maxEnrollThrows: 6,
+  // Registration takes exactly this many throws. Raise it to let an odd throw be struck out and replaced.
+  maxEnrollThrows: 3,
+  // How many times a new customer who bowls like an existing one is asked to enroll again. 0 means never.
+  twinRedos: 0,
   // The accept distance is the customer's own spread times this factor.
   acceptFactor: 1.7,
   // Limits on the accept distance, so a very tidy or very sloppy enrollment still gives a usable profile.

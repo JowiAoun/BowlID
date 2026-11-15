@@ -61,7 +61,7 @@ const server = startServer({ source: 'replay', onClient: () => playAll() });
 
 server.ready.then(
   () => {
-    console.log(`Bowlometrics replay listening on ws://127.0.0.1:${server.port}`);
+    console.log(`Bowl ID replay listening on ws://127.0.0.1:${server.port}`);
     server.setStatus({ message: `Ready to replay ${swings.length} swing(s). Playback starts when the page connects.` });
   },
   (err) => {

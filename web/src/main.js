@@ -710,8 +710,12 @@ function drawReportGraph(root, r) {
 
 function showReport(r) {
   state.report = r;
+  clearTimeout(state.reportTimer);
   const el = $('report');
   const cls = VERDICT_CLASS[r.outcome];
+  const passed = r.outcome === 'recognized' || r.outcome === 'created';
+  // "Bowl again" is a small card in the corner, so the lane stays in view for the next throw.
+  const compact = !passed && !r.final;
   let actions = '';
   if (r.outcome === 'recognized' || r.outcome === 'created') {
     actions = '<button class="verify" type="button" data-act="enter" data-primary>Open my account</button>';
@@ -719,10 +723,9 @@ function showReport(r) {
     actions = `<button class="verify" type="button" data-act="leave" data-primary>Close</button>
       <button class="link" type="button" data-act="again">or bowl again</button>`;
   } else {
-    actions = `<button class="verify" type="button" data-act="again" data-primary>Bowl again</button>
-      <span>Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
+    actions = `<span>${r.score == null ? '' : `Score ${r.score} of 100. `}Bowl again. Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
   }
-  el.className = `report ${cls}`;
+  el.className = `report ${cls}${compact ? ' compact' : ''}`;
   el.innerHTML = `
     <div class="head">
       <small>Bowl ID biometric report</small>
@@ -735,12 +738,13 @@ function showReport(r) {
   el.hidden = false;
   // A new report starts at its top, wherever the last one was scrolled to.
   el.scrollTop = 0;
-  lane?.setPanel(true);
-  drawReportGraph(el, r);
+  lane?.setPanel(!compact);
+  if (compact) state.reportTimer = setTimeout(hideReport, 3000);
+  else drawReportGraph(el, r);
   setStatus(r.title, cls === 'ok' ? 'ok' : cls === 'bad' ? '' : 'plain');
   hint();
 }
-function hideReport() { $('report').hidden = true; lane?.setPanel(false); }
+function hideReport() { clearTimeout(state.reportTimer); $('report').hidden = true; lane?.setPanel(false); }
 
 // The report covers most of the lane. This puts it away so there is a lane to bowl on.
 function again() {
@@ -860,7 +864,7 @@ function afterEnroll(sig, pins, src, rec) {
   }
   // Somebody already on file bowls like this. Ask once for a swing with more of this person in it.
   const clash = collision(profile, store.accounts(src));
-  if (clash && e.restarts < 1) {
+  if (clash && e.restarts < MATCH_CONFIG.twinRedos) {
     e.restarts++;
     e.throws = [];
     setStatus(`Your swing looks a lot like ${clash.account.username}'s. Two accounts would share one password. Bowl ${MATCH_CONFIG.enrollThrows} more with a flourish that is yours.`);
@@ -896,7 +900,8 @@ function afterEnroll(sig, pins, src, rec) {
   showReport(report);
   lane.reset();
   hideBanner();
-  state.autoOpen = setTimeout(enter, 7000);
+  // The account opens by itself. Nobody has to press the button.
+  state.autoOpen = setTimeout(enter, 3000);
 }
 
 function afterLogin(sig, pins, src, rec, down) {
@@ -1738,13 +1743,24 @@ $('verify').addEventListener('click', () => {
   setStatus(state.flow === 'enroll' ? 'There is nothing to click. Please bowl.' : 'Your backswing is your password. Please bowl.');
 });
 
+// The restart button starts the whole test again: enrollment goes back to throw one,
+// and a log-in gets a fresh set of bowls.
 $('reload').addEventListener('click', () => {
   audio.click();
-  if (state.busy || !lane || state.login.over) return;
+  if (state.busy || !lane || state.phase !== 'challenge' || state.login.over) return;
+  // Starting again after an inconclusive bowl still counts as having tried, like walking away.
+  recordAttempt();
+  recorder.cancel();
+  speech.clear();
+  if (state.flow === 'enroll') state.enroll = { throws: [], restarts: 0 };
+  state.login = newLogin();
   lane.reset();
+  lane.setAim(state.aim);
   hideBanner();
   hideReport();
-  setStatus('New challenge loaded. It is also bowling.', 'plain');
+  header();
+  drawSlots();
+  setStatus(state.flow === 'enroll' ? 'Starting again from the first throw. It is still bowling.' : 'New challenge loaded. It is also bowling.', 'plain');
   hint();
 });
 
