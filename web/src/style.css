@@ -304,12 +304,11 @@ input[type="text"]:focus, .btn:focus-visible, .mode:focus-visible { outline: 2px
   position: absolute;
   left: 16px;
   bottom: 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px 6px 14px;
+  display: grid;
+  gap: 5px;
+  padding: 8px 14px 9px;
   border: 3px solid #2f8fd8;
-  border-radius: 999px;
+  border-radius: 18px;
   background: #fff;
   color: #17507f;
   font-weight: 600;
@@ -317,8 +316,25 @@ input[type="text"]:focus, .btn:focus-visible, .mode:focus-visible { outline: 2px
   box-shadow: 0 4px 0 rgba(23, 80, 127, 0.25);
   animation: pop 0.3s cubic-bezier(.3,1.7,.5,1);
 }
-.power i { width: 150px; height: 12px; border-radius: 999px; background: #d5e3ec; overflow: hidden; }
+.power div { display: flex; align-items: center; gap: 10px; }
+.power span { width: 46px; }
+.power i { position: relative; width: 150px; height: 12px; border-radius: 999px; background: #d5e3ec; overflow: hidden; }
 .power b { display: block; height: 100%; width: 0; border-radius: 999px; background: #ff9f1c; transition: width 0.5s cubic-bezier(.2,.8,.2,1); }
+/* The spin track has a mark in the middle and a dot that slides to the side the ball will curve to. */
+.power i.spin { overflow: visible; background: linear-gradient(90deg, #d5e3ec 49%, #17507f 49%, #17507f 51%, #d5e3ec 51%); }
+.power u {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50%;
+  background: #2f8fd8;
+  border: 3px solid #fff;
+  box-shadow: 0 1px 0 rgba(23, 80, 127, 0.4);
+  transition: left 0.5s cubic-bezier(.3,1.5,.5,1);
+}
 
 .banner {
   position: absolute;

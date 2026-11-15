@@ -46,7 +46,7 @@ More on the remote, calibration and fixes: [`docs/hardware.md`](docs/hardware.md
 
 ## Usage
 
-- **Wii remote**: point at the lane to aim, or use the D-pad. Hold B, swing, release B. The A button presses the main button on screen. Wear the wrist strap.
+- **Wii remote**: point at the lane to aim, or use the D-pad. Hold B, swing, release B. A remote tilted to one side at the release sends the ball that way, and a wrist twist during the swing makes it curve. The A button presses the main button on screen. Wear the wrist strap.
 - **Demo mode**: move the pointer to aim. Press on the lane, pull back, flick forward, release.
 - **Switch modes**: click the button at the top right. The app never switches to demo mode by itself when the remote drops.
 - **Sample customers**: sign in as Gary Gutterman, get declined, then click "Replay Gary's own recorded swing". His swing is made by a formula and always lands in the gutter.

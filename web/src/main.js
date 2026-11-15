@@ -188,9 +188,9 @@ function hint() {
   if (recorder.state === 'swing') { el.innerHTML = '<b>Reading your swing.</b> Release to let go of the ball.'; return; }
   if (state.mode === 'wii') {
     const ir = source.irActive && source.irActive();
-    el.innerHTML = `${ir ? 'Point at the lane to aim.' : 'Aim with the D-pad.'} <b>Hold B</b>, swing, <b>release B</b>. Wear the wrist strap.`;
+    el.innerHTML = `${ir ? 'Point at the lane to aim.' : 'Aim with the D-pad.'} <b>Hold B</b>, swing, <b>release B</b>. Twist your wrist to curve it. Wear the wrist strap.`;
   } else {
-    el.innerHTML = 'Move to aim. <b>Press</b> on the lane, pull back, flick forward, <b>release</b>.';
+    el.innerHTML = 'Move to aim. <b>Press</b> on the lane, pull back, flick forward, <b>release</b>. Flick sideways to curve it.';
   }
 }
 
@@ -230,12 +230,19 @@ function drawRack() {
   dots.forEach((d, i) => d.classList.toggle('down', Boolean(down && down[i])));
 }
 
-function showPower(power) {
+function showPower(thrown) {
   const el = $('power');
   el.hidden = false;
   const bar = el.querySelector('b');
+  const dot = el.querySelector('u');
   bar.style.width = '0%';
-  requestAnimationFrame(() => { bar.style.width = `${Math.round(8 + power * 92)}%`; });
+  dot.style.left = '50%';
+  // The spin marker sits in the middle for a straight ball and slides to the side it will curve to.
+  const curve = Math.max(-1, Math.min(1, thrown.hook + thrown.tilt * 2));
+  requestAnimationFrame(() => {
+    bar.style.width = `${Math.round(8 + thrown.power * 92)}%`;
+    dot.style.left = `${50 + curve * 46}%`;
+  });
 }
 
 const CONFETTI = ['#ffd23f', '#ff6b6b', '#2f8fd8', '#3ccf91', '#ffffff', '#ff9f1c'];
@@ -303,7 +310,7 @@ async function onSwing(swing) {
   state.replaying = false;
   state.lastSource = src;
   const thrown = throwFromSwing(swing, aim);
-  showPower(thrown.power);
+  showPower(thrown);
   const pins = await lane.play(thrown);
   const sig = makeSignature(swing);
   // The game celebrates first. The bank gives its verdict a moment later.
