@@ -10,6 +10,8 @@ The pins decide nothing. A gutter ball from the right arm gets in. A strike from
 
 Made for the Stupid Ideas Hackathon (Ottawa F26). Tracks: General, Stupidest Metric. This is a joke, not security, and there is no real money in the bank behind it.
 
+Try it in your browser: https://bowlometrics.pages.dev
+
 ## The metric
 
 **The Bowlometric Identity Score**: 0 to 100, how close this swing is to the swings on file for the username that was typed. 70 and up passes. It is a similarity measure and not a probability.
@@ -48,7 +50,7 @@ On the Ubuntu demo laptop, with the Wii remote:
 
 | | Aim | Bowl | Menus |
 |---|---|---|---|
-| Wii remote | Point at the screen, or D-pad | Hold B, swing back, swing forward, let go of B | A is "Log in" on the front page and the main button after that. 2 is "Create". HOME cancels. `-` mutes. `1` recentres the aim. |
+| Wii remote | Point at the screen, or D-pad | Hold B, swing back, swing forward, let go of B. A remote tilted to one side at the release sends the ball that way, and a wrist twist makes it curve. | A is "Log in" on the front page and the main button after that. 2 is "Create". HOME cancels. `-` mutes. `1` recentres the aim. |
 | Mouse or touch | Move over the lane | Press, pull back, flick forward, let go | Click |
 | Keyboard | Left and right arrows | Hold Space, let go when the power bar is high | Esc cancels |
 
@@ -87,9 +89,9 @@ Run `npm run evaluate -- --synthetic` to check the tool itself on made-up swings
 ## Deploy
 
 1. Run `npx wrangler login` once.
-2. Run `npm run deploy:bowlid`
+2. Run `npm run deploy`
 
-This publishes `dist/` to Cloudflare Pages as the `bowlid` project. The public site works with a pointer on any laptop. It has two labelled sample customers with formula swings: each can be watched logging in, and one can be watched trying the other's account.
+This publishes `dist/` to Cloudflare Pages as the `bowlometrics` project, at https://bowlometrics.pages.dev. The public site works with a pointer on any laptop. It has two labelled sample customers with formula swings: each can be watched logging in, and one can be watched trying the other's account.
 
 The Wii remote is read by a small program on the Ubuntu laptop, which only listens on that laptop. So the remote works on that laptop and nowhere else: hand a judge the remote and our screen. Accounts live in that browser's storage, so enroll on the laptop and in the browser that will be used on stage.
 
@@ -108,11 +110,11 @@ The Wii remote is read by a small program on the Ubuntu laptop, which only liste
 - The username flow in a headless Chrome on a Mac, with formula swings fed through the same path the pointer uses: two people create accounts, one bowls on the other's account and is declined and named, a swing that fits nobody is declined with no name, and the owner then logs in and sees both attempts. Empty, unknown, malformed and taken usernames are refused. An account saved before usernames existed still loads. The sample loop was checked too: Gary is declined on Margaret's account, and Margaret sees the attempt.
 - A swing that opens two accounts is covered by a matcher test and was not exercised in the browser.
 - **Not tested: real people on the real Wii remote.** Nobody has yet been checked by this version from a real swing. The matcher has only seen formula swings, which are far tidier than a person. Run the measurement above on the Ubuntu laptop before trusting it on stage.
-- The public deploy has not been run from this machine.
+- The public site at https://bowlometrics.pages.dev was deployed before this version. Run `npm run deploy` to put this version on it.
 
 ---
 
-# BowlBank (the earlier version, still here at `/bank.html`)
+# Bowlometrics, the bank (the earlier version, still here at `/bank.html`)
 
 A bank where your password is how you bowl. 🎳
 
@@ -160,7 +162,7 @@ More on the remote, calibration and fixes: [`docs/hardware.md`](docs/hardware.md
 
 ## Usage
 
-- **Wii remote**: point at the lane to aim, or use the D-pad. Hold B, swing, release B. The A button presses the main button on screen. Wear the wrist strap.
+- **Wii remote**: point at the lane to aim, or use the D-pad. Hold B, swing, release B. A remote tilted to one side at the release sends the ball that way, and a wrist twist during the swing makes it curve. The A button presses the main button on screen. Wear the wrist strap.
 - **Demo mode**: move the pointer to aim. Press on the lane, pull back, flick forward, release.
 - **Switch modes**: click the button at the top right. The app never switches to demo mode by itself when the remote drops.
 - **Sample customers**: sign in as Gary Gutterman, get declined, then click "Replay Gary's own recorded swing". His swing is made by a formula and always lands in the gutter.
@@ -202,7 +204,7 @@ Events carry the score, the verdict and the pin count. They never carry names, a
 1. Run `npx wrangler login` once.
 2. Run `npm run deploy`
 
-This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlbank` project. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
+This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometrics` project. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
 
 ## Technologies
 

@@ -735,6 +735,16 @@ export class Lane {
     this.crowd.setMood(kind === 'strike' || (good && down >= 9) ? 'cheer' : good ? 'idle' : 'sad');
   }
 
+  // Where robot `i`'s head is in the lane element, in pixels. Null when it is out of view.
+  headOnScreen(i) {
+    const r = this.crowd && this.crowd.bots[i];
+    if (!r) return null;
+    const v = this.headPoint || (this.headPoint = new THREE.Vector3());
+    r.head.localToWorld(v.set(0, 0.24, 0)).project(this.camera);
+    if (v.z > 1 || Math.abs(v.x) > 0.92 || v.y > 0.8 || v.y < -0.9) return null;
+    return { x: (v.x * 0.5 + 0.5) * this.container.clientWidth, y: (-v.y * 0.5 + 0.5) * this.container.clientHeight };
+  }
+
   // Stop drawing while the challenge is closed.
   setActive(on) {
     this.active = on;

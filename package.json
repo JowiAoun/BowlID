@@ -1,5 +1,5 @@
 {
-  "name": "bowlbank",
+  "name": "bowlometrics",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,8 +11,7 @@
     "bridge": "node bridge/bridge.mjs",
     "test": "node --test",
     "evaluate": "node tools/evaluate.mjs",
-    "deploy": "./scripts/deploy.sh",
-    "deploy:bowlid": "BOWLBANK_PAGES_PROJECT=bowlid ./scripts/deploy.sh"
+    "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.11.0",

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BowlBank: your money, your swing</title>
+    <title>Bowlometrics: your money, your swing</title>
     <meta name="description" content="A bank where your password is how you bowl. A joke made for the Stupid Ideas Hackathon. No real money." />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%230f3d2e'/%3E%3Ccircle cx='12' cy='11' r='2.2' fill='%23f4efe4'/%3E%3Ccircle cx='19' cy='10' r='2.2' fill='%23f4efe4'/%3E%3Ccircle cx='16' cy='16' r='2.2' fill='%23f4efe4'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="/src/style.css" />
@@ -15,7 +15,7 @@
           <circle cx="16" cy="16" r="15" fill="currentColor" />
           <circle cx="12" cy="11" r="2.2" fill="#f4efe4" /><circle cx="19" cy="10" r="2.2" fill="#f4efe4" /><circle cx="16" cy="16" r="2.2" fill="#f4efe4" />
         </svg>
-        <span data-brand>BowlBank</span>
+        <span data-brand>Bowlometrics</span>
       </a>
       <nav aria-label="Sections that do nothing">
         <span>Personal</span><span>Business</span><span>Mortgages</span><span class="on">Bowling</span>
@@ -31,7 +31,10 @@
         <div class="hud" aria-hidden="true">
           <div id="tag" class="nametag"></div>
           <div id="rack" class="rack"></div>
-          <div id="power" class="power" hidden><span>Power</span><i><b></b></i></div>
+          <div id="power" class="power" hidden>
+            <div><span>Power</span><i><b></b></i></div>
+            <div><span>Spin</span><i class="spin"><u></u></i></div>
+          </div>
           <div id="banner" class="banner" hidden></div>
         </div>
         <div id="stamp" class="stamp" hidden></div>
@@ -45,7 +48,7 @@
 
     <footer class="foot">
       <p id="ledger"></p>
-      <p class="small"><span data-brand>BowlBank</span> is a joke made for the Stupid Ideas Hackathon. It holds no money and is not a bank. The score is a measure of swing similarity. It is not a probability and not security. <a id="export" href="#" hidden>Export recorded swings</a></p>
+      <p class="small"><span data-brand>Bowlometrics</span> is a joke made for the Stupid Ideas Hackathon. It holds no money and is not a bank. The score is a measure of swing similarity. It is not a probability and not security. <a id="export" href="#" hidden>Export recorded swings</a></p>
     </footer>
 
     <script type="module" src="/src/bank-main.js"></script>
