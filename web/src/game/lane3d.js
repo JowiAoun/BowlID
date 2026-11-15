@@ -1,6 +1,7 @@
 // Draws the lane with Three.js and plays a throw from the physics simulation.
 import * as THREE from 'three';
 import { LANE, createWorld, step, result, pinLayout } from './physics.js';
+import { BRAND } from '../brand.js';
 
 const WOOD = '#d9b77c';
 const GREEN = 0x0f3d2e;
@@ -54,10 +55,11 @@ function signTexture() {
   g.fillStyle = '#f4efe4';
   g.textAlign = 'center';
   g.font = '600 112px Georgia, "Times New Roman", serif';
-  g.fillText('BOWLBANK', c.width / 2, 138);
+  // The last argument squeezes a long name to fit the sign.
+  g.fillText(BRAND.name.toUpperCase(), c.width / 2, 138, c.width - 90);
   g.fillStyle = '#b8893b';
   g.font = '34px Georgia, serif';
-  g.fillText('YOUR MONEY. YOUR SWING.', c.width / 2, 204);
+  g.fillText(BRAND.tagline.toUpperCase(), c.width / 2, 204, c.width - 90);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

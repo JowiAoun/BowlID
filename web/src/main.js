@@ -9,6 +9,7 @@ import { WiiSource, MouseSource, replaySwing } from './input/sources.js';
 import { store } from './bank/store.js';
 import { verdictLine, pinsLabel, QUALITY, STATEMENT, money } from './bank/copy.js';
 import { track } from './analytics.js';
+import { BRAND } from './brand.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -311,7 +312,7 @@ function home() {
     </li>`).join('');
   return `
     <h1>Passwords are over. Please bowl.</h1>
-    <p class="lede">BowlBank protects your savings with the one thing a thief cannot guess: your backswing. To sign in, bowl. How many pins you hit is your own business.</p>
+    <p class="lede">${esc(BRAND.name)} protects your savings with the one thing a thief cannot guess: your backswing. To sign in, bowl. How many pins you hit is your own business.</p>
     <div class="row"><button class="btn" data-act="open" data-primary>Open an account</button></div>
     <h3>Customers at this branch</h3>
     <ul class="customers">${rows}</ul>
@@ -509,6 +510,9 @@ function boot() {
     probe.onerror = () => {};
   } catch { /* No bridge here. Demo mode stays. */ }
 }
+
+document.title = `${BRAND.name}: ${BRAND.tagline}`;
+document.querySelectorAll('[data-brand]').forEach((el) => { el.textContent = BRAND.name; });
 
 render();
 boot();
