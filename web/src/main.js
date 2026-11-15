@@ -10,6 +10,7 @@ import { store } from './bank/store.js';
 import { verdictLine, pinsLabel, QUALITY, STATEMENT, money } from './bank/copy.js';
 import { track } from './analytics.js';
 import { BRAND } from './brand.js';
+import '@fontsource-variable/fredoka';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -94,7 +95,6 @@ const trace = {
     g.stroke();
   },
 };
-(function loop() { trace.draw(); requestAnimationFrame(loop); })();
 
 /* Input */
 
@@ -126,7 +126,9 @@ const hub = {
       if (aimLog.length > 120) aimLog.shift();
       if (!state.busy) lane.setAim(args[0]);
     } else if (name === 'press') {
-      if (canBowl()) { state.pressAim = steadyAim(); lane.setAim(state.pressAim); hideStamp(); recorder.press(args[0]); }
+      if (canBowl()) { state.pressAim = steadyAim(); lane.setAim(state.pressAim); hideStamp(); hideBanner(); recorder.press(args[0]);
+        if (state.screen === 'verify') $('tag').textContent = `${state.account.name} · Bowl ${state.attempt + 1}`;
+      }
     }
     else if (name === 'release') recorder.release(args[0]);
   },
@@ -207,6 +209,88 @@ function showStamp(verdict, text, sub) {
 }
 function hideStamp() { $('stamp').hidden = true; }
 
+/* Game overlay */
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The pin display: ten dots laid out as the player sees the rack, back row on top.
+const rack = $('rack');
+const RACK_ROWS = [[6, 7, 8, 9], [3, 4, 5], [1, 2], [0]];
+const dots = [];
+for (const row of RACK_ROWS) {
+  const line = document.createElement('div');
+  for (const i of row) {
+    dots[i] = document.createElement('i');
+    line.appendChild(dots[i]);
+  }
+  rack.appendChild(line);
+}
+function drawRack() {
+  const down = lane.pinsDown();
+  dots.forEach((d, i) => d.classList.toggle('down', Boolean(down && down[i])));
+}
+
+function showPower(power) {
+  const el = $('power');
+  el.hidden = false;
+  const bar = el.querySelector('b');
+  bar.style.width = '0%';
+  requestAnimationFrame(() => { bar.style.width = `${Math.round(8 + power * 92)}%`; });
+}
+
+const CONFETTI = ['#ffd23f', '#ff6b6b', '#2f8fd8', '#3ccf91', '#ffffff', '#ff9f1c'];
+function showBanner(pins) {
+  const el = $('banner');
+  const kind = pins.strike ? 'strike' : pins.gutter ? 'gutter' : 'count';
+  const text = pins.strike ? 'Strike!' : pins.gutter ? 'Gutter ball' : `${pins.pins} pin${pins.pins === 1 ? '' : 's'}`;
+  el.className = `banner ${kind}`;
+  el.innerHTML = `<span>${text}</span>`;
+  if (pins.strike) {
+    for (let i = 0; i < 36; i++) {
+      const bit = document.createElement('em');
+      const angle = Math.random() * Math.PI * 2;
+      const far = 140 + Math.random() * 260;
+      bit.style.setProperty('--x', `${Math.cos(angle) * far}px`);
+      bit.style.setProperty('--y', `${Math.sin(angle) * far - 80}px`);
+      bit.style.setProperty('--r', `${Math.random() * 720 - 360}deg`);
+      bit.style.background = CONFETTI[i % CONFETTI.length];
+      bit.style.animationDelay = `${Math.random() * 0.12}s`;
+      el.appendChild(bit);
+    }
+  }
+  el.hidden = false;
+}
+function hideBanner() { $('banner').hidden = true; $('power').hidden = true; }
+
+function tagText() {
+  if (state.screen === 'enroll') {
+    const done = state.enroll.throws.length;
+    return `${state.enroll.name} · Throw ${done + 1}`;
+  }
+  if (state.screen === 'verify') return `${state.account.name} · Bowl ${Math.max(1, state.attempt)}`;
+  if (state.screen === 'account') return `${state.account.name} · Signed in`;
+  return 'Practice lane';
+}
+
+// Numbers count up and the score marker slides in when a new screen arrives.
+function animateIn() {
+  desk.querySelectorAll('[data-count]').forEach((el) => {
+    const target = Number(el.dataset.count);
+    const fmt = el.dataset.format === 'money' ? money : (v) => String(Math.round(v));
+    const start = performance.now();
+    const tick = (now) => {
+      const k = Math.min(1, (now - start) / 900);
+      el.textContent = fmt(target * (1 - (1 - k) ** 3));
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  desk.querySelectorAll('[data-left]').forEach((el) => {
+    el.style.left = '0%';
+    requestAnimationFrame(() => requestAnimationFrame(() => { el.style.left = `${el.dataset.left}%`; }));
+  });
+}
+
 /* Throws */
 
 async function onSwing(swing) {
@@ -218,8 +302,13 @@ async function onSwing(swing) {
   const src = state.replaying ? 'synthetic' : state.mode === 'wii' ? 'wii' : 'mouse';
   state.replaying = false;
   state.lastSource = src;
-  const pins = await lane.play(throwFromSwing(swing, aim));
+  const thrown = throwFromSwing(swing, aim);
+  showPower(thrown.power);
+  const pins = await lane.play(thrown);
   const sig = makeSignature(swing);
+  // The game celebrates first. The bank gives its verdict a moment later.
+  showBanner(pins);
+  if (state.screen === 'verify') await wait(950);
   recorded.push({
     version: 1,
     label: state.screen,
@@ -235,7 +324,7 @@ async function onSwing(swing) {
   if (state.screen === 'enroll') afterEnroll(sig, pins);
   else if (state.screen === 'verify') afterVerify(sig, pins);
   else flash(`${pinsLabel(pins)}. Nice. It proves nothing about who you are.`);
-  setTimeout(() => { lane.reset(); lane.setAim(state.aim); state.busy = false; }, 1500);
+  setTimeout(() => { lane.reset(); lane.setAim(state.aim); hideBanner(); state.busy = false; }, 1700);
 }
 
 function afterEnroll(sig, pins) {
@@ -373,10 +462,10 @@ function verifyScreen() {
   const idWord = { match: 'Approved', mismatch: 'Declined', retry: r.crisis ? 'Identity crisis' : 'Unclear, bowl again' }[r.verdict];
   const pinCls = r.pins.strike ? 'good' : r.pins.gutter ? 'bad' : '';
   return `${head}
-    <div class="score">${r.score}<small>Bowlometric Identity Score, out of 100</small></div>
+    <div class="score"><span data-count="${r.score}">${r.score}</span><small>Bowlometric Identity Score, out of 100</small></div>
     <div class="meter">
       <div class="track"></div><div class="zone retry"></div><div class="zone match"></div>
-      <div class="mark" style="left:${r.score}%"></div>
+      <div class="mark" style="left:${r.score}%" data-left="${r.score}"></div>
       <div class="ticks"><span style="left:50%">50</span><span style="left:70%">70</span></div>
     </div>
     <table class="results">
@@ -401,7 +490,7 @@ function account() {
   const rows = STATEMENT.map(([what, v]) => `<tr><td>${esc(what)}</td><td class="${v < 0 ? 'neg' : ''}">${money(v)}</td></tr>`).join('');
   return `
     <h3 style="margin-top:0">${esc(a.name)} · ${esc(a.number)}</h3>
-    <div class="balance">${money(a.balance)}</div>
+    <div class="balance" data-count="${a.balance}" data-format="money">${money(a.balance)}</div>
     <p class="note">Available balance. Not real. Not withdrawable. Not even with a strike.</p>
     ${state.welcome ? `<p class="lede">${esc(state.welcome)}</p>` : ''}
     <h3>Recent activity</h3>
@@ -415,9 +504,20 @@ function account() {
     </div>`;
 }
 
+let shown = null;
 function render() {
   desk.innerHTML = { home, open, enroll, verify: verifyScreen, account }[state.screen]();
   ledgerLine();
+  $('tag').textContent = tagText();
+  // Play the entrance only when the screen or the verdict is new.
+  const key = `${state.screen}:${state.attempt}:${state.enroll ? state.enroll.throws.length : 0}`;
+  if (key !== shown) {
+    shown = key;
+    desk.classList.remove('enter');
+    void desk.offsetWidth;
+    desk.classList.add('enter');
+    animateIn();
+  }
   desk.querySelectorAll('[data-seq]').forEach((c) => {
     const t = state.enroll.throws[Number(c.dataset.seq)];
     drawSeqs(c, [{ seq: t.sig.seq, color: t.bad ? '#a3271f' : '#0f3d2e' }]);
@@ -516,6 +616,7 @@ document.querySelectorAll('[data-brand]').forEach((el) => { el.textContent = BRA
 
 render();
 boot();
+(function loop() { trace.draw(); drawRack(); requestAnimationFrame(loop); })();
 
 // For the diagnostics page and for automated checks.
 window.bowlbank = { state, store, hub, lane, recorded, replaySwing, syntheticSet };

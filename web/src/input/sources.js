@@ -116,16 +116,23 @@ export class WiiSource extends Source {
 }
 
 // Demo mode. The pointer stands in for the remote: its speed changes become the swing signal.
+// Pointer positions are kept with their own timestamps and resampled at 100 Hz,
+// so the signal is the same on a fast laptop and on a slow one.
+const GRID_MS = 10;
+const LAG_MS = 24;
+
 export class MouseSource extends Source {
   constructor(element) {
     super('mouse');
     this.el = element;
     this.down = false;
-    this.pos = null;
-    this.prev = null;
+    this.track = [];
+    this.gridT = null;
+    this.gridPos = null;
     this.vel = [0, 0];
     this.acc = [0, 0];
-    this.tick = this.tick.bind(this);
+    this.flush = this.flush.bind(this);
+    this.frame = this.frame.bind(this);
     this.move = this.move.bind(this);
     this.press = this.press.bind(this);
     this.release = this.release.bind(this);
@@ -138,15 +145,23 @@ export class MouseSource extends Source {
     window.addEventListener('pointerup', this.release);
     window.addEventListener('pointercancel', this.release);
     this.emit('status', { connected: true, bridge: false, sensors: { accel: true }, message: 'Demo mode. Your pointer is the remote.' });
-    requestAnimationFrame(this.tick);
+    this.timer = setInterval(this.flush, GRID_MS);
+    requestAnimationFrame(this.frame);
   }
 
   stop() {
     this.running = false;
+    clearInterval(this.timer);
     this.el.removeEventListener('pointermove', this.move);
     this.el.removeEventListener('pointerdown', this.press);
     window.removeEventListener('pointerup', this.release);
     window.removeEventListener('pointercancel', this.release);
+  }
+
+  frame() {
+    if (!this.running) return;
+    this.flush();
+    requestAnimationFrame(this.frame);
   }
 
   where(ev) {
@@ -156,9 +171,18 @@ export class MouseSource extends Source {
   }
 
   move(ev) {
-    const [x, y, ratio] = this.where(ev);
-    this.pos = [x, y];
-    if (!this.down) this.emit('aim', clamp((x / ratio) * 2.4, -1, 1));
+    // The browser may bundle several pointer positions into one event. Keep them all.
+    const parts = ev.getCoalescedEvents ? ev.getCoalescedEvents() : [];
+    for (const e of parts.length ? parts : [ev]) {
+      const [x, y] = this.where(e);
+      const t = e.timeStamp || ev.timeStamp;
+      const last = this.track[this.track.length - 1];
+      if (!last || t > last[0]) this.track.push([t, x, y]);
+    }
+    if (!this.down) {
+      const [x, , ratio] = this.where(ev);
+      this.emit('aim', clamp((x / ratio) * 2.4, -1, 1));
+    }
   }
 
   press(ev) {
@@ -167,33 +191,56 @@ export class MouseSource extends Source {
     this.el.setPointerCapture?.(ev.pointerId);
     this.move(ev);
     this.down = true;
-    this.emit('press', performance.now());
+    this.emit('press', ev.timeStamp);
   }
 
-  release() {
+  release(ev) {
     if (!this.down) return;
     this.down = false;
-    this.emit('release', performance.now());
+    this.flush();
+    this.emit('release', ev.timeStamp || performance.now());
   }
 
-  tick(now) {
-    if (!this.running) return;
-    requestAnimationFrame(this.tick);
-    if (!this.pos) return;
-    if (this.prev) {
-      const dt = Math.max(0.004, (now - this.prev.t) / 1000);
-      const vx = (this.pos[0] - this.prev.x) / dt;
-      const vy = (this.pos[1] - this.prev.y) / dt;
-      // Screen up is the forward swing. 0.08 puts a normal flick at 2 to 4 g, like a real swing.
-      const rawX = clamp(((vx - this.vel[0]) / dt) * 0.08, -6, 6);
-      const rawY = clamp((-(vy - this.vel[1]) / dt) * 0.08, -6, 6);
-      this.vel = [vx, vy];
-      // Pointer events arrive in uneven steps. A light filter keeps the signal from spiking.
-      this.acc[0] += (rawX - this.acc[0]) * 0.35;
-      this.acc[1] += (rawY - this.acc[1]) * 0.35;
-      this.emit('samples', [[now, this.acc[0], this.acc[1], 1, null, null, null]]);
+  // Where the pointer was at time t, between the two recorded positions around it.
+  at(t) {
+    const tr = this.track;
+    while (tr.length > 2 && tr[1][0] <= t) tr.shift();
+    const a = tr[0];
+    const b = tr[1];
+    if (!b || t <= a[0]) return [a[1], a[2]];
+    if (t >= b[0]) return [b[1], b[2]];
+    const k = (t - a[0]) / (b[0] - a[0]);
+    return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+  }
+
+  flush() {
+    if (!this.running || !this.track.length) return;
+    const until = performance.now() - LAG_MS;
+    if (this.gridT == null || until - this.gridT > 2000) {
+      // First sample, or a long pause: start again from here.
+      this.gridT = until;
+      this.gridPos = this.at(until);
+      this.vel = [0, 0];
+      return;
     }
-    this.prev = { t: now, x: this.pos[0], y: this.pos[1] };
+    const rows = [];
+    const dt = GRID_MS / 1000;
+    while (this.gridT + GRID_MS <= until) {
+      this.gridT += GRID_MS;
+      const pos = this.at(this.gridT);
+      const vx = (pos[0] - this.gridPos[0]) / dt;
+      const vy = (pos[1] - this.gridPos[1]) / dt;
+      // Screen up is the forward swing. 0.08 puts a normal flick at 2 to 4 g, like a real swing.
+      const rawX = clamp(((vx - this.vel[0]) / dt) * 0.08, -8, 8);
+      const rawY = clamp((-(vy - this.vel[1]) / dt) * 0.08, -8, 8);
+      this.vel = [vx, vy];
+      this.gridPos = pos;
+      // Pointer positions come in whole pixels. A filter keeps the signal from spiking.
+      this.acc[0] += (rawX - this.acc[0]) * 0.18;
+      this.acc[1] += (rawY - this.acc[1]) * 0.18;
+      rows.push([this.gridT, this.acc[0], this.acc[1], 1, null, null, null]);
+    }
+    if (rows.length) this.emit('samples', rows);
   }
 }
 

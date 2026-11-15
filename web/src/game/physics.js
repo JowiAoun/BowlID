@@ -41,7 +41,7 @@ export function createWorld(t) {
     },
     pins: pinLayout().map((p) => ({
       x: p.x, z: p.z, vx: 0, vz: 0,
-      down: false, gone: false, fallT: 0, dirX: 0, dirZ: 1, spin: 0,
+      down: false, gone: false, fallT: 0, dirX: 0, dirZ: 1, spin: 0, pop: 0,
     })),
   };
 }
@@ -54,6 +54,8 @@ function knock(pin, world) {
   pin.dirX = pin.vx / sp;
   pin.dirZ = pin.vz / sp;
   pin.spin = (pin.vx > 0 ? 1 : -1) * (2 + sp * 1.5);
+  // How hard the pin jumps off the deck. Only the drawing uses this.
+  pin.pop = Math.min(1.7, sp * 0.4);
   if (world.hitTime == null) world.hitTime = world.time;
 }
 
