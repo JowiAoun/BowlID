@@ -27,6 +27,7 @@ const POSES = {
   follow: { armR: 2.7, armL: -0.7, spread: -1.2, lean: -0.34, crouch: 0.09, nod: 0.18, legL: 0.55, legR: -1.0, rate: 9 },
   watch: { armR: 0.35, armL: 0.25, spread: -0.3, lean: -0.14, crouch: 0.03, nod: 0, legL: 0.12, legR: -0.12, rate: 4 },
   cheer: { armR: 2.9, armL: 2.9, spread: -0.35, lean: 0.06, crouch: 0, nod: 0.14, legL: 0, legR: 0, rate: 9 },
+  nice: { armR: 2.45, armL: 0.25, spread: -0.2, lean: 0.03, crouch: 0, nod: 0.1, legL: 0, legR: 0, rate: 9 },
   sad: { armR: 0.05, armL: 0.05, spread: -0.08, lean: -0.18, crouch: 0.04, nod: -0.42, legL: 0, legR: 0, rate: 6 },
   slump: { armR: 0.1, armL: 0.1, spread: -0.12, lean: -0.3, crouch: 0.07, nod: -0.55, legL: 0.1, legR: -0.1, rate: 7 },
 };
@@ -171,9 +172,7 @@ export class Bowler {
     quiff.rotation.z = Math.PI / 2;
     quiff.scale.set(0.66, 1.2, 0.95);
     quiff.position.set(0.01, 0.142, -0.07);
-    const curl = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), HAIR);
-    curl.position.set(0.03, 0.195, -0.125);
-    this.head.add(skull, hair, quiff, curl);
+    this.head.add(skull, hair, quiff);
     for (const s of [-1, 1]) {
       const ear = new THREE.Mesh(new THREE.SphereGeometry(0.036, 10, 8), SKIN);
       ear.scale.z = 0.6;
@@ -220,7 +219,7 @@ export class Bowler {
     // The mouth turns over and the brows drop when the throw goes badly.
     const sad = state === 'sad' || state === 'slump';
     this.smile.rotation.z = sad ? 0 : Math.PI;
-    this.smile.position.y = sad ? -0.088 : -0.058;
+    this.smile.position.y = sad ? -0.102 : -0.058;
     this.browL.rotation.z = sad ? 0.3 : -0.14;
     this.browR.rotation.z = sad ? -0.3 : 0.14;
   }
@@ -254,7 +253,9 @@ export class Bowler {
     this.head.rotation.x = p.nod;
     // A slow shake of the head after a gutter ball.
     this.head.rotation.y = this.state === 'slump' ? Math.sin(this.t * 5) * 0.4 * Math.min(1, this.t * 2) : 0;
-    this.armR.rotation.x = p.armR + (cheer ? Math.sin(this.t * 17) * 0.12 : 0);
+    // A small fist pump for a good count that was not a strike.
+    const pump = this.state === 'nice' ? Math.sin(Math.min(this.t, 1.2) * 13) * 0.3 : 0;
+    this.armR.rotation.x = p.armR + pump + (cheer ? Math.sin(this.t * 17) * 0.12 : 0);
     this.armL.rotation.x = p.armL + (cheer ? Math.cos(this.t * 17) * 0.12 : 0);
     this.armL.rotation.z = -p.spread;
     this.armR.rotation.z = cheer ? 0.3 : 0;

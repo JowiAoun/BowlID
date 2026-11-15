@@ -720,13 +720,19 @@ export class Lane {
     if (this.bowler && this.swing === 'back') this.bowler.drive = angle;
   }
 
+  // Tells the lane that a panel is covering its right-hand side.
+  setPanel(on) { this.panel = Boolean(on); }
+
   // Shows the bowler and the robots reacting. `kind` is 'strike', 'miss' or 'gutter'.
   react(kind) {
     if (!this.cast) return;
     this.reaction = kind;
     this.cut = true;
-    this.bowler.set(kind === 'strike' ? 'cheer' : kind === 'gutter' ? 'slump' : 'sad');
-    this.crowd.setMood(kind === 'strike' ? 'cheer' : 'sad');
+    // Most of the pins is still a good throw, and the bowler knows it.
+    const down = this.world ? this.world.pins.filter((p) => p.down || p.gone).length : 0;
+    const good = kind === 'miss' && down >= 7;
+    this.bowler.set(kind === 'strike' ? 'cheer' : kind === 'gutter' ? 'slump' : good ? 'nice' : 'sad');
+    this.crowd.setMood(kind === 'strike' || (good && down >= 9) ? 'cheer' : good ? 'idle' : 'sad');
   }
 
   // Stop drawing while the challenge is closed.
@@ -917,8 +923,10 @@ export class Lane {
     if (this.reaction && this.cast) {
       // Looking back up the lane at the bowler and the seats.
       const bx = this.bowler.group.position.x;
-      v.x = bx + 0.75; v.y = 0.92; v.z = STAND - 2.5;
-      v.lx = bx + 0.05; v.ly = 0.64; v.lz = STAND;
+      // When the report covers the right of the lane, the bowler is framed in what is left.
+      const aside = this.panel && this.wide === 1 ? 0.68 : 0;
+      v.x = bx + 0.75 - aside; v.y = 0.92; v.z = STAND - 2.5;
+      v.lx = bx + 0.05 - aside; v.ly = 0.64; v.lz = STAND;
       v.fov = 32;
     } else if (w) {
       const b = w.ball;
