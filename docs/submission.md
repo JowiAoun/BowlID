@@ -107,8 +107,8 @@ Record this before going on stage, on the demo laptop, with the real remote.
 
 These are in `docs/images/`, taken in a headless browser with pointer swings, which is why they carry the "simulated" label.
 
-- `hero.png`: the report after a log-in bowl, with the score and the pins marked "Not considered".
-- `game.png`: the bowling game inside the login window.
+- `hero.png`: a gutter ball that is accepted, with the score and the pins marked "Not considered".
+- `declined.png`: a swing on somebody else's account, declined and named.
 - `home.png`: the front page, with the username field and no password field.
 - `enroll.png`: creating an account.
 - `account.png`: the account after logging in.

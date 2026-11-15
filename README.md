@@ -7,13 +7,13 @@
 Type a username, pick up a Wii remote and bowl. The site checks your swing and ignores your pins.<br>
 A gutter ball from the right arm gets in. A strike from a stranger is turned away.
 
-**[Live demo](https://bowlid.pages.dev)** &nbsp;·&nbsp; [Setup](docs/setup.md) &nbsp;·&nbsp; [How it works](#how-it-works)
+**[Live demo](https://bowlid.pages.dev)** (works with a mouse) &nbsp;·&nbsp; [Setup](docs/setup.md) &nbsp;·&nbsp; [How it works](#how-it-works)
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 </div>
 
-![The login window after one bowl: "Password accepted" for the username pat, a Bowlometric Identity Score of 78 out of 100, and the bowling result of 8 pins marked "Not considered"](docs/images/hero.png)
+![The login window after one bowl: a gutter ball, a sulking bowler, and "Password accepted" for the username pat, with a Bowlometric Identity Score of 88 out of 100 and the bowling result marked "Not considered"](docs/images/hero.png)
 
 Made for the Stupid Ideas Hackathon (Ottawa F26). It is a joke. It is not security, and no real money or real accounts are involved.
 
@@ -27,7 +27,7 @@ Nobody has ever had their backswing stolen. So we took the password field off th
 
 ## What it does
 
-- **No password field:** the front page has a username box and two buttons.
+- **No password field:** the front page has a username box, a password box that reads "No field. You will bowl it." and two buttons.
 - **Bowl to create an account:** a CAPTCHA-style window opens with a whole bowling game in it. Three throws go on file as your password.
 - **Bowl to log in:** type your username and bowl once. The swing is checked against that account, and the answer is accepted, bowl again or declined.
 - **The pins decide nothing:** the report shows your bowling result with the words "Not considered" under it.
@@ -37,7 +37,7 @@ Nobody has ever had their backswing stolen. So we took the password field off th
 - **Works with no hardware:** on the public site your pointer stands in for the remote, and the page labels it as simulated. Two sample customers are there to watch.
 - **A crowd with opinions:** an announcer calls each throw and verdict, and two robots in the stands react with speech bubbles.
 
-![The bowling game inside the login window: the bowler celebrates 8 pins while robots watch from the seats](docs/images/game.png)
+![A declined log-in: "Wrong password. You are not alice. You bowl like bob (93 / 100). alice will be told." The score is 3 out of 100](docs/images/declined.png)
 
 ## Tracks
 

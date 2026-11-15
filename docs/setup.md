@@ -37,7 +37,7 @@ The Wii remote is optional. Without it, the app runs with a mouse or a touch scr
    | Variable | What it is | Where to get it |
    |---|---|---|
    | `VITE_AMPLITUDE_API_KEY` | Sends the scores to Amplitude. Empty means analytics is off. | Your Amplitude project's settings |
-   | `BOWLBANK_BRIDGE_PORT` | Port of the local Wii remote bridge. Default 8765. | Pick any free port, and add `&bridge=PORT` to the page address |
+   | `BOWLBANK_BRIDGE_PORT` | Port of the local Wii remote bridge. Default 8765. | Pick any free port, and add `&bridge=PORT` after `?mode=wii` in the page address |
    | `BOWLBANK_ACCEL_ZERO`, `BOWLBANK_ACCEL_COUNTS_PER_G` | Calibration for your remote. | Run `node bridge/calibrate.mjs` |
 
 ## Setup
