@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Proof of Human</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="logo">✓</span> HumanCheck<sup>™</sup> <span class="tag">Enterprise Human Verification</span></div>
+    <div class="meter" id="meter">
+      <div class="meter-label">Humanity</div>
+      <div class="meter-value" id="meter-value">50%</div>
+      <div class="meter-bar"><div class="meter-fill" id="meter-fill"></div></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card" id="card">
+      <div class="step" id="step"></div>
+      <h1 id="title"></h1>
+      <p class="instr" id="instr"></p>
+      <div class="area" id="area"></div>
+    </section>
+  </main>
+
+  <div class="verdict" id="verdict" hidden>
+    <div class="verdict-who">HumanCheck says</div>
+    <div class="verdict-text" id="verdict-text"></div>
+  </div>
+
+  <video id="cam" playsinline muted></video>
+
+  <footer class="debug" id="debug" hidden>
+    <span id="dbg-src"></span> · <span id="dbg-live"></span> · <span id="dbg-verdict"></span>
+    <br />→ next · R reset · M mute · 1 Wii · 2 webcam · 3 mouse · D debug · Space = A button
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
