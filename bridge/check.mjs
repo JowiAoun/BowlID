@@ -35,7 +35,7 @@ const run = (cmd, args) => {
   }
 };
 
-console.log('Bowlometrics controller check\n');
+console.log('BowlID controller check\n');
 
 // Bluetooth adapter.
 const btShow = run('bluetoothctl', ['show']);

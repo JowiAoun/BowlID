@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PROJECT="${BOWLBANK_PAGES_PROJECT:-bowlometrics}"
+PROJECT="${BOWLBANK_PAGES_PROJECT:-bowlid}"
 
 if ! npx wrangler whoami 2>&1 | grep -q 'You are logged in'; then
   echo "Not logged in to Cloudflare. Run: npx wrangler login" >&2
