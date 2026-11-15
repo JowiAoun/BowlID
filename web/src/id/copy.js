@@ -118,14 +118,23 @@ export const QUALITY = {
 
 export const NO_SWING = 'The keyboard has no backswing. That bowl was for fun and carried no identity.';
 
+// [what, amount, category, day, icon]
 export const STATEMENT = [
-  ['Shoe rental, size unknown', -6.5],
-  ['Lane wax levy', -14.0],
-  ['Interest, paid in pins', 10.0],
-  ['Nachos (business expense)', -11.25],
-  ['Wrist strap compliance rebate', 4.2],
-  ['Deposit: found in ball return', 20.0],
+  ['Shoe rental, size unknown', -6.5, 'Lanes & equipment', 'Today', 'shoe'],
+  ['Lane wax levy', -14.0, 'Fees', 'Today', 'drop'],
+  ['Interest, paid in pins', 10.0, 'Interest · 10 pins at par', 'Today', 'trend'],
+  ['Nachos (business expense)', -11.25, 'Snack bar · Lane 67', 'Earlier this week', 'nacho'],
+  ['Wrist strap compliance rebate', 4.2, 'Rebates', 'Earlier this week', 'watch'],
+  ['Deposit: found in ball return', 20.0, 'Deposits', 'Earlier this week', 'down'],
 ];
+
+// How much of the owner showed up in their own swings, on average.
+export function younessLabel(avg) {
+  if (avg >= 90) return 'Unmistakably you';
+  if (avg >= 80) return 'Reliably you';
+  if (avg >= 70) return 'Mostly you';
+  return 'Barely you';
+}
 
 export const money = (v) => v.toLocaleString('en-CA', { style: 'currency', currency: 'CAD' });
 

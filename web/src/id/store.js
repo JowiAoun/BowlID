@@ -9,10 +9,12 @@ const BALANCES = [69420.0, 80085.0, 31337.42, 12345.67, 404.04, 1000000.01, 8675
 const COLORS = ['#4a8ff0', '#e8590c', '#0f9d58', '#9c36b5', '#d6336c', '#f08c00', '#0c8599'];
 // How many log-ins and declined attempts are kept per account.
 const KEEP = 50;
+// How many scored bowls are kept for the side-by-side view. Two log-ins of three bowls each fit twice over.
+const RECENT = 12;
 const USERNAME = /^[a-z0-9_.-]{2,20}$/;
 
 const blankLedger = () => ({ bowls: 0, recognized: 0, unknown: 0, unsure: 0, crises: 0, guttersIn: 0, strikesOut: 0, logins: 0, loginBowls: 0, loginPins: 0 });
-const blank = () => ({ accounts: [], ledger: blankLedger(), serial: 67 });
+const blank = () => ({ accounts: [], ledger: blankLedger(), serial: 67, recent: [], lastUser: '' });
 
 export const cleanUsername = (text) => String(text || '').trim().toLowerCase();
 
@@ -39,15 +41,23 @@ function read() {
   try {
     const data = JSON.parse(localStorage.getItem(KEY));
     if (data && Array.isArray(data.accounts)) {
-      return { ...blank(), ...data, accounts: migrate(data.accounts), ledger: { ...blankLedger(), ...data.ledger } };
+      return {
+        ...blank(),
+        ...data,
+        accounts: migrate(data.accounts),
+        ledger: { ...blankLedger(), ...data.ledger },
+        recent: Array.isArray(data.recent) ? data.recent : [],
+      };
     }
   } catch { /* A broken or missing save starts fresh. */ }
   return blank();
 }
 
 let state = read();
+// Bowls by the sample customers stay in memory, like everything else about them.
 const save = () => {
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* Private windows may refuse. The session still works. */ }
+  const kept = { ...state, recent: state.recent.filter((c) => c.src !== 'synthetic') };
+  try { localStorage.setItem(KEY, JSON.stringify(kept)); } catch { /* Private windows may refuse. The session still works. */ }
 };
 
 const accountNumber = () => `0${Math.floor(1000 + Math.random() * 9000)} ${Math.floor(100000 + Math.random() * 900000)}`;
@@ -134,6 +144,33 @@ export const store = {
 
   close(id) {
     state.accounts = state.accounts.filter((a) => a.id !== id);
+    state.recent = state.recent.filter((c) => c.account !== id);
+    save();
+  },
+
+  // One scored log-in bowl, kept for the side-by-side view: its score, verdict, pins and the
+  // force curve of the swing. `card.account` is the account it was tried on and `card.login`
+  // the log-in it belongs to. Only the last few are kept.
+  remember(card) {
+    state.recent.push(card);
+    if (state.recent.length > RECENT) state.recent.shift();
+    save();
+  },
+
+  // The last two log-ins to this account, oldest first. A log-in that took several bowls is
+  // shown by its last one.
+  lastTwo(accountId) {
+    const byLogin = new Map();
+    for (const c of state.recent) if (c.account === accountId) byLogin.set(c.login, c);
+    return [...byLogin.values()].slice(-2);
+  },
+
+  // The username last bowled for, so the page can come back with it filled in.
+  lastUser() { return state.lastUser || ''; },
+  setLastUser(username) {
+    const u = cleanUsername(username);
+    if (u === state.lastUser) return;
+    state.lastUser = u;
     save();
   },
 

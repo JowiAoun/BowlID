@@ -317,6 +317,30 @@ export const audio = {
     tone(midi(96), t + 0.36, 1.3, { gain: 0.2 });
   },
 
+  // The score counting up. `k` is how far up, 0 to 1, and the pitch climbs with it.
+  tick(k) {
+    if (!ctx) return;
+    const f = 520 + 900 * k;
+    tone(f, ctx.currentTime, 0.05, { type: 'triangle', gain: 0.09, to: f * 1.04 });
+  },
+
+  // Access denied: two low buzzes going down.
+  denied() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    tone(150, t, 0.26, { type: 'square', gain: 0.07, to: 140 });
+    tone(110, t + 0.3, 0.5, { type: 'square', gain: 0.08, to: 98 });
+    tone(75, t, 0.8, { type: 'sine', gain: 0.35, to: 55 });
+  },
+
+  // Too close to call: a question, two notes going up.
+  unsure() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    tone(midi(67), t, 0.22, { type: 'triangle', gain: 0.22 });
+    tone(midi(70), t + 0.2, 0.45, { type: 'triangle', gain: 0.22, to: midi(72) });
+  },
+
   click() {
     if (!ctx) return;
     tone(620, ctx.currentTime, 0.05, { type: 'triangle', gain: 0.2, to: 420 });

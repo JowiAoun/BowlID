@@ -228,7 +228,7 @@ body.wii .remote { display: inline-block; }
 /* The page behind the challenge stays where it is. */
 body.challenge { overflow: hidden; }
 .challenge {
-  width: min(96vw, 860px, calc((100vh - 222px) * 1.6));
+  width: min(96vw, 1180px, calc((100vh - 222px) * 1.6));
   min-width: min(96vw, 320px);
   background: #fff;
   border: 1px solid #c1c1c1;
@@ -471,6 +471,12 @@ body.challenge .mode { display: none; }
 .mode.bad::before { background: #d93025; }
 
 @media (max-width: 560px) {
+  .home { padding: 24px 18px; }
+  .home input { font-size: 22px; }
+  .pass { height: 110px; gap: 10px; }
+  .pass .dots { font-size: 26px; }
+  .pass .wiimote { height: 96px; }
+  .big { font-size: 20px; }
   .hint .wide { display: none; }
   .card { padding: 24px 20px; }
   .ask { padding: 12px 14px; }
@@ -539,3 +545,160 @@ body.challenge .mode { display: none; }
 .bubble.pinned.right { left: auto; right: 14px; }
 .bubble.pinned::after { display: none; }
 @keyframes bubble-in { from { transform: translate(-50%, -100%) translateY(-12px) scale(0); opacity: 0; } }
+
+
+/* The front door, sized for the back of a room: a username, a remote where the password would
+   be, and one button. */
+
+.home { width: min(560px, 100%); padding: 30px 40px 26px; }
+.home h1 { margin: 2px 0 18px; font: 600 40px/1.1 var(--game); letter-spacing: -0.5px; }
+.home .field { font-size: 16px; font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase; }
+.home input { padding: 14px 16px; border-width: 2px; border-radius: 10px; font: 500 28px var(--game); margin-bottom: 18px; }
+.pass {
+  display: flex; align-items: center; justify-content: center; gap: 22px;
+  height: 150px; margin-bottom: 20px; padding: 0 16px;
+  border: 2px dashed #b8bdc5; border-radius: 10px; background: #f7f9fc; overflow: hidden;
+}
+.pass .dots { position: relative; color: #b8bdc5; font-size: 38px; letter-spacing: 4px; }
+.pass .dots::after { content: ""; position: absolute; left: -6px; right: -6px; top: 50%; height: 5px; margin-top: -2px; border-radius: 3px; background: #dc2626; transform: rotate(-8deg); }
+.pass .arrow { width: 40px; flex: none; fill: none; stroke: #9aa0a6; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.wiimote { height: 128px; flex: none; overflow: visible; transform-origin: 50% 8%; animation: bowl 2.4s cubic-bezier(.45,0,.3,1) infinite; }
+.wiimote .body { fill: #fff; stroke: #202124; stroke-width: 3; }
+.wiimote .strap { fill: none; stroke: #4a8ff0; stroke-width: 3; stroke-linecap: round; }
+.wiimote .pwr { fill: #dc2626; }
+.wiimote .dpad, .wiimote .sm, .wiimote .num { fill: #5f6368; }
+.wiimote .a { fill: #c7cbd1; stroke: #5f6368; stroke-width: 2; }
+.wiimote .led { fill: #4a8ff0; }
+.wiimote .led.off { fill: #d5d8dd; }
+/* Back, a pause at the top, then the forward swing: a bowling arm, seen from the side. */
+@keyframes bowl {
+  0%, 100% { transform: rotate(0deg); }
+  35% { transform: rotate(38deg); }
+  45% { transform: rotate(38deg); }
+  70% { transform: rotate(-42deg); }
+  80% { transform: rotate(-42deg); }
+}
+.home .big { margin-top: 0; padding: 20px 16px; border-radius: 14px; font: 600 28px var(--game); }
+.home .big.solid { background: #2563eb; border-color: #2563eb; }
+.home .big.solid:hover { background: #1d4ed8; }
+.home .big.busy { opacity: 0.7; }
+.home .remote { left: 18px; right: auto; min-width: 34px; padding: 3px 9px; font: 700 18px var(--game); background: #fff; color: #2563eb; }
+.quiet { position: relative; display: block; width: 100%; margin-top: 10px; padding: 10px; border: 0; border-radius: 10px; background: none; color: var(--grey); font: 500 18px var(--game); }
+.quiet:hover { background: #f1f3f4; color: var(--ink); }
+.quiet .remote { left: 12px; background: #e8eaed; color: var(--ink); }
+.home .widget-note { min-height: 0; margin-top: 8px; font-size: 16px; }
+.home .widget-note:empty { display: none; }
+
+/* The verdict. One number, one mark, one word. Everything else is smaller and further down. */
+
+.verdict {
+  position: fixed; inset: 0; z-index: 30;
+  display: grid; place-items: center; padding: 2vh 2vw;
+  background: rgba(15, 18, 24, 0.66);
+  backdrop-filter: blur(4px);
+  animation: v-fade 0.2s ease-out;
+  font-family: var(--game);
+}
+@keyframes v-fade { from { opacity: 0; } }
+.v-panel {
+  --v: #1f2937;
+  width: min(1180px, 96vw); max-height: 96vh; overflow: auto;
+  padding: 2.4vh 3.5vw 2vh; border-radius: 28px; background: #fff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  text-align: center; color: #1f2937;
+  animation: v-rise 0.35s cubic-bezier(.2,1.4,.4,1);
+}
+@keyframes v-rise { from { opacity: 0; transform: translateY(30px) scale(0.96); } }
+.v-panel.v-solo { width: min(980px, 96vw); border-top: 14px solid var(--v); transition: border-color 0.3s; }
+.v-panel.counting { --v: #9aa3b2; }
+.granted { --v: #16a34a; }
+.denied { --v: #dc2626; }
+.unsure { --v: #d97706; }
+
+.v-label { margin: 0; font-size: clamp(16px, 2.6vh, 30px); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; }
+.v-label b { color: #1f2937; text-transform: none; letter-spacing: 0; }
+.v-top { display: flex; align-items: center; justify-content: center; gap: 2.5vw; }
+.v-score { display: flex; align-items: baseline; color: var(--v); transition: color 0.3s; }
+.v-score b { font-size: clamp(80px, 18vh, 240px); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; text-align: right; }
+.v-score i { font-style: normal; font-size: 0.28em; font-size: clamp(28px, 6vh, 72px); font-weight: 600; color: #9ca3af; margin-left: 0.15em; }
+
+.v-mark { width: clamp(64px, 13vh, 170px); height: clamp(64px, 13vh, 170px); flex: none; fill: none; stroke: var(--v); stroke-linecap: round; stroke-linejoin: round; }
+.v-mark circle { stroke-width: 7; }
+.v-mark path { stroke-width: 10; }
+.v-solo .v-mark { opacity: 0; transform: scale(0.3) rotate(-30deg); }
+.v-solo.shown .v-mark { opacity: 1; transform: none; transition: transform 0.45s cubic-bezier(.3,1.8,.5,1), opacity 0.15s; }
+.v-solo.shown .v-mark path { stroke-dasharray: 120; stroke-dashoffset: 120; animation: v-draw 0.45s 0.15s ease-out forwards; }
+@keyframes v-draw { to { stroke-dashoffset: 0; } }
+
+.v-meter { position: relative; width: min(680px, 86%); height: clamp(12px, 1.8vh, 22px); margin: 1.2vh auto 0; border-radius: 999px; background: #e5e7eb; }
+.v-solo .v-meter { margin-bottom: clamp(20px, 3vh, 34px); }
+.v-meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--v); transition: background 0.3s; }
+.v-meter u { position: absolute; top: -8px; bottom: -8px; width: 4px; margin-left: -2px; border-radius: 2px; background: #1f2937; }
+.v-meter s { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; font-size: clamp(12px, 1.8vh, 20px); font-weight: 600; text-decoration: none; color: #4b5563; }
+
+.v-word { margin: 1.8vh 0 0; font-size: clamp(36px, 7.5vh, 96px); font-weight: 700; line-height: 1; letter-spacing: 0.01em; text-transform: uppercase; color: var(--v); }
+.v-solo .v-word { opacity: 0; transform: scale(0.6); }
+.v-solo.shown .v-word { opacity: 1; transform: none; transition: transform 0.4s cubic-bezier(.3,1.9,.5,1) 0.1s, opacity 0.15s 0.1s; }
+.v-also { margin: 0.8vh 0 0; font-size: clamp(18px, 3.2vh, 36px); font-weight: 600; color: #374151; }
+.v-solo .v-also { opacity: 0; }
+.v-solo.shown .v-also { opacity: 1; transition: opacity 0.3s 0.35s; }
+.granted .v-also { color: #b45309; }
+
+.v-graph { height: clamp(90px, 15vh, 220px); margin: 1vh 0 0; }
+.v-graph canvas { display: block; width: 100%; height: 100%; }
+.v-key { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 28px; font-size: clamp(14px, 2.2vh, 24px); font-weight: 500; color: #4b5563; }
+.v-key i { display: inline-block; width: 42px; height: 0; margin-right: 10px; vertical-align: middle; }
+.v-key i.dash { border-top: 6px dotted #7c879b; }
+.v-key i.solid { border-top: 6px solid #1f2937; border-radius: 3px; }
+.v-solo.shown .v-key i.solid, .v-two .v-key i.solid { border-top-color: var(--v); }
+
+/* The pins, in grey, apart from the score: they never count. */
+.v-pins { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 1.8vh 0 0; padding-top: 1.6vh; border-top: 2px solid #eef0f3; color: #6b7280; }
+.v-rack div { display: flex; justify-content: center; gap: 4px; margin-bottom: 3px; }
+.v-rack i { width: clamp(9px, 1.4vh, 16px); height: clamp(9px, 1.4vh, 16px); border-radius: 50%; background: #6b7280; }
+.v-rack i.down { background: transparent; box-shadow: inset 0 0 0 2px #d1d5db; }
+.v-pincount { text-align: left; line-height: 1.05; }
+.v-pincount span { display: block; font-size: clamp(13px, 2vh, 22px); font-weight: 500; }
+.v-pincount b { font-size: clamp(28px, 5vh, 56px); font-weight: 700; color: #374151; font-variant-numeric: tabular-nums; }
+.v-pincount b i { font-style: normal; font-size: 0.55em; color: #9ca3af; }
+.v-pins em { padding: 4px 12px; border: 3px solid #9ca3af; border-radius: 8px; font-style: normal; font-size: clamp(14px, 2.2vh, 24px); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #9ca3af; transform: rotate(-6deg); }
+.v-sim { display: inline-block; margin: 1.2vh 0 0; padding: 3px 14px; border-radius: 999px; background: #fff4e5; color: #8a4b00; font-size: clamp(13px, 1.8vh, 18px); font-weight: 500; }
+
+.v-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 1.6vh; }
+.v-btn { display: inline-flex; align-items: center; gap: 10px; padding: 12px 24px; border: 2px solid #d1d5db; border-radius: 14px; background: #fff; color: #1f2937; font: 600 clamp(16px, 2.4vh, 26px) var(--game); }
+.v-btn:hover { background: #f3f4f6; }
+.v-btn.solid { border-color: #2563eb; background: #2563eb; color: #fff; }
+.v-btn.solid:hover { background: #1d4ed8; }
+.v-btn kbd { display: none; min-width: 1.6em; padding: 1px 8px; border-radius: 999px; background: #e5e7eb; color: #1f2937; font: 700 0.85em var(--game); }
+.v-btn.solid kbd { background: #fff; color: #2563eb; }
+body.wii .v-btn kbd { display: inline-block; }
+.v-solo.counting .v-actions { opacity: 0; }
+.v-solo .v-actions { transition: opacity 0.3s 0.4s; }
+
+/* Two log-ins to one account, side by side. */
+.v-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 2vw; margin-top: 1.4vh; }
+.v-card { padding: 1.6vh 1.6vw 1.4vh; border: 4px solid var(--v); border-radius: 22px; animation: v-rise 0.45s cubic-bezier(.2,1.4,.4,1) both; animation-delay: calc(var(--i) * 0.25s); }
+.v-card header { font-size: clamp(15px, 2.2vh, 26px); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7280; }
+.v-card .v-top { gap: 1.2vw; }
+.v-card .v-mark { width: clamp(48px, 9vh, 110px); height: clamp(48px, 9vh, 110px); }
+.v-card .v-score b { font-size: clamp(56px, 12vh, 150px); }
+.v-card .v-score i { font-size: clamp(20px, 3.6vh, 44px); }
+.v-card .v-graph { height: clamp(80px, 16vh, 200px); margin-top: 0.6vh; }
+.v-card .v-key { font-size: clamp(12px, 1.7vh, 18px); gap: 2px 14px; }
+.v-card .v-key i { width: 28px; }
+.v-card .v-word { margin-top: 1vh; font-size: clamp(26px, 5.6vh, 64px); }
+.v-card .v-also { font-size: clamp(14px, 2.2vh, 24px); }
+.v-card .v-pins { gap: 12px; }
+.v-card .v-pincount b { font-size: clamp(22px, 4vh, 44px); }
+.v-card .v-pins em { font-size: clamp(11px, 1.6vh, 18px); }
+.v-punch { margin: 1.8vh 0 0; font-size: clamp(20px, 3.6vh, 40px); font-weight: 700; color: #1f2937; animation: v-rise 0.5s 0.9s both; }
+
+@media (max-width: 700px) {
+  .v-cards { grid-template-columns: 1fr; }
+  .v-panel { padding: 16px; border-radius: 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wiimote, .v-panel, .v-card, .v-punch, .verdict { animation: none; }
+  .v-solo.shown .v-mark path { animation: none; stroke-dashoffset: 0; }
+}

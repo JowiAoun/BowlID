@@ -13,10 +13,12 @@ import { MATCH_CONFIG, buildProfile, identify, verifyClaim, collision, traits } 
 import { syntheticSet } from './motion/synthetic.js';
 import { WiiSource, MouseSource, replaySwing } from './input/sources.js';
 import { store, cleanUsername } from './id/store.js';
+import { forceOf, savedForce, forceRange } from './motion/trace.js';
+import { heroHTML, pairHTML, actionsHTML, drawSwing } from './id/verdict.js';
 import { track } from './analytics.js';
 import {
   ID, ask, headline, verdictLine, whoElseLine, crisisLine, attemptLine, traitLine, nameFor, pinsLabel, money,
-  SKILL_LINE, QUALITY, NO_SWING, STATEMENT, SOURCE_NOTE, USERNAME_NOTE,
+  SKILL_LINE, QUALITY, NO_SWING, STATEMENT, SOURCE_NOTE, USERNAME_NOTE, younessLabel,
 } from './id/copy.js';
 import '@fontsource-variable/fredoka';
 
@@ -29,7 +31,6 @@ const BRIDGE_URL = `ws://127.0.0.1:${params.get('bridge') || 8765}`;
 // `?who=name` labels every recorded swing with that person, for the evaluation tool.
 const WHO = (params.get('who') || '').trim().slice(0, 40);
 
-const widget = $('widget');
 const laneEl = $('lane');
 let lane = null;
 
@@ -51,10 +52,12 @@ const state = {
   login: null, // See newLogin().
   report: null,
   session: null, // { account, report, created, fresh }
+  seq: 0, // Counts throws and fresh log-ins, so a lane reset meant for an earlier one is skipped.
 };
 
 // One log-in: every bowl until the account opens or the swing is turned away.
 const newLogin = () => ({
+  id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
   bowls: 0, pins: 0, lastPins: 0, startedAt: performance.now(), over: false, finished: false,
   best: 0, like: null, src: null, logged: false,
 });
@@ -73,12 +76,13 @@ function setStatus(text, kind = '') {
   el.textContent = text;
 }
 
+// The branch ledger under the front door, as small stat pills.
 function ledgerLine() {
-  const l = store.ledger();
   const el = $('ledger');
-  if (!l.bowls) { el.textContent = ''; return; }
-  const per = l.logins ? (l.loginBowls / l.logins).toFixed(1) : 'n/a';
-  el.textContent = `Branch ledger. Gutter balls let in: ${l.guttersIn}. Strikes turned away: ${l.strikesOut}. Identity crises: ${l.crises}. Bowls per log-in: ${per}.`;
+  const stats = ledgerStats();
+  el.innerHTML = stats
+    ? `<span class="lg-title">Branch ledger</span>${stats.map(([v, label]) => `<span class="lg"><b>${esc(v)}</b> ${esc(label.toLowerCase())}</span>`).join('')}`
+    : '';
 }
 
 const inputKind = () => (state.mode === 'wii' ? 'wii' : 'pointer');
@@ -91,11 +95,14 @@ function showNote() {
     el.textContent = state.note.text;
     return;
   }
-  const kind = inputKind();
-  const n = store.accounts(kind).length;
-  const what = kind === 'wii' ? 'the Wii Remote' : 'the pointer (simulated)';
   el.className = 'widget-note';
-  el.textContent = n ? `${n} account${n === 1 ? '' : 's'} on file for ${what}.` : `Nobody is on file for ${what} yet.`;
+  el.textContent = '';
+}
+
+// The side-by-side button on the front page, for the account whose username is typed.
+function pairButton() {
+  const a = store.find($('username').value);
+  $('pair').hidden = !a || store.lastTwo(a.id).length < 2;
 }
 
 // Most and least themselves: everyone who has got in, by how much they bowled like themselves.
@@ -127,13 +134,16 @@ function home() {
   showNote();
   // Usernames are not secret. The swing is.
   $('known').innerHTML = store.accounts(inputKind()).map((a) => `<option value="${esc(a.username)}"></option>`).join('');
-  $('widget-label').textContent = 'I am me';
-  const links = [
+  pairButton();
+  // With the remote connected, the sample customers are only clutter. They are for visitors without one.
+  const links = state.mode === 'wii' ? [] : [
     '<a href="#" data-act="sample" data-swing="gary" data-as="gary">No remote? Watch Gary log in (simulated).</a>',
     '<a href="#" data-act="sample" data-swing="gary" data-as="margaret">Watch Gary try Margaret\'s account (simulated).</a>',
     '<a href="#" data-act="sample" data-swing="margaret" data-as="margaret">Watch Margaret log in (simulated).</a>',
-    `<a href="#" data-act="practice">Practice lane${WHO ? `, recording as ${esc(WHO)}` : ''}</a>`,
   ];
+  links.push(
+    `<a href="#" data-act="practice">Practice lane${WHO ? `, recording as ${esc(WHO)}` : ''}</a>`,
+  );
   if (recorded.length) links.push(`<a href="#" data-act="export">Export ${recorded.length} recorded swing${recorded.length === 1 ? '' : 's'}</a>`);
   $('home-links').innerHTML = links.join('<br>');
   document.body.classList.toggle('wii', state.mode === 'wii');
@@ -143,9 +153,10 @@ function home() {
 
 function setPhase(phase) {
   state.phase = phase;
-  widget.dataset.state = phase === 'home' ? 'idle' : phase === 'account' ? 'verified' : 'checking';
+  $('login').classList.toggle('busy', phase === 'checking');
   $('home').hidden = phase === 'account';
   $('inside').hidden = phase !== 'account';
+  document.body.classList.toggle('in-account', phase === 'account');
   $('create').disabled = $('login').disabled = $('username').disabled = phase !== 'home';
   if (phase === 'account') $('board').hidden = true;
   if (phase === 'home') home();
@@ -176,6 +187,7 @@ function readUsername(flow) {
 
 // What the A button on the remote presses right now.
 function primary() {
+  if (verdictOpen()) return verdictEl.querySelector('[data-primary]');
   if (state.phase === 'home') return $('login');
   if (state.phase === 'account') return $('signout');
   if (state.phase === 'challenge' && !$('report').hidden) return $('report').querySelector('[data-primary]');
@@ -230,14 +242,16 @@ async function openChallenge(flow, sample = null, as = null) {
     if (!who) return;
   }
   state.note = null;
+  // A log-in that was closed without opening the account leaves nothing open behind it.
+  state.session = null;
+  if (!sample && who.username) store.setLastUser(who.username);
   state.username = who.username;
   state.claim = who.claim;
   $('username').blur();
   state.flow = flow;
   state.sample = sample;
-  $('widget-label').textContent = flow === 'enroll' ? 'Learning how you bowl...' : flow === 'login' ? `Checking that you are ${who.username}...` : 'Opening the practice lane...';
   setPhase('checking');
-  await wait(850);
+  await wait(300);
   state.enroll = flow === 'enroll' ? { throws: [], restarts: 0 } : null;
   state.login = newLogin();
   state.busy = false;
@@ -265,6 +279,7 @@ async function openChallenge(flow, sample = null, as = null) {
 
 function closeChallenge() {
   clearTimeout(state.autoOpen);
+  hideVerdict();
   $('veil').hidden = true;
   lockPage(false);
   $('info').hidden = true;
@@ -298,6 +313,8 @@ function recordAttempt() {
 }
 
 function cancel() {
+  // The side-by-side view can be opened from the front page. Closing it goes back there.
+  if (verdictOpen() && state.phase !== 'challenge') { hideVerdict(); return; }
   if (state.phase !== 'challenge') return;
   // Walking away after an inconclusive bowl still counts as having tried.
   recordAttempt();
@@ -310,8 +327,9 @@ function cancel() {
 const recorder = new SwingRecorder({ onSwing, onState: () => hint() });
 let source = null;
 
+// A final verdict on screen holds the lane, so a stray press of B cannot clear it.
 const canBowl = () =>
-  state.phase === 'challenge' && !state.busy && lane && !state.login.over
+  state.phase === 'challenge' && !state.busy && lane && !state.login.over && !(verdictOpen() && verdict.final)
   && (state.replaying || state.mode === 'demo' || state.status.connected);
 
 // Pressing B jerks the remote. The throw uses where it pointed just before the press.
@@ -333,6 +351,7 @@ function setAim(aim) {
 
 // A new bowl clears the last verdict. After a final "unknown", it also starts a new log-in.
 function beginBowl() {
+  hideVerdict();
   hideBanner();
   hideReport();
   $('info').hidden = true;
@@ -392,6 +411,14 @@ function setMode(mode) {
   source.on('button', (name, down) => {
     if (!down) return;
     audio.start();
+    // On the verdict, each button that does something has the remote's button drawn on it.
+    if (verdictOpen()) {
+      if (name === 'A') primary()?.click();
+      else if (name === 'HOME') cancel();
+      else if (name === 'MINUS') $('sound').click();
+      else verdictEl.querySelector(`[data-wii="${name}"]`)?.click();
+      return;
+    }
     if (name === 'A') primary()?.click();
     else if (name === '2' && state.phase === 'home') $('create').click();
     else if (name === 'HOME') cancel();
@@ -448,7 +475,7 @@ function chrome() {
 
 function hint() {
   const el = $('hint');
-  if (state.busy || (state.login && state.login.over) || !$('report').hidden) { el.hidden = true; return; }
+  if (state.busy || (state.login && state.login.over) || !$('report').hidden || verdictOpen()) { el.hidden = true; return; }
   el.hidden = false;
   if (state.replaying) { el.innerHTML = 'Replaying a <b>simulated</b> sample swing.'; return; }
   if (state.charge) { el.innerHTML = 'Let go of <kbd>Space</kbd> to bowl.'; return; }
@@ -467,6 +494,12 @@ function hint() {
 
 const keys = { left: false, right: false };
 window.addEventListener('keydown', (ev) => {
+  // The verdict: Enter does what A does, Escape what HOME does. Space is left alone.
+  if (verdictOpen()) {
+    if (ev.code === 'Enter' || ev.code === 'NumpadEnter') { ev.preventDefault(); primary()?.click(); return; }
+    if (ev.code === 'Escape') { ev.preventDefault(); cancel(); return; }
+    if (ev.code === 'Space' && verdict.final) { ev.preventDefault(); return; }
+  }
   if (state.phase !== 'challenge') return;
   if (ev.code === 'Escape') { cancel(); return; }
   if (ev.code === 'ArrowLeft') { keys.left = true; ev.preventDefault(); }
@@ -712,6 +745,7 @@ function hideReport() { $('report').hidden = true; lane?.setPanel(false); }
 // The report covers most of the lane. This puts it away so there is a lane to bowl on.
 function again() {
   if (state.phase !== 'challenge' || state.login.over) return;
+  hideVerdict();
   hideBanner();
   hideReport();
   $('info').hidden = true;
@@ -737,8 +771,9 @@ function onSwing(swing) {
 
 // After a throw, the lane is put back and the next bowl is allowed.
 async function settle(ms = 1700) {
+  const seq = state.seq;
   await wait(ms);
-  if (state.phase !== 'challenge') return;
+  if (state.phase !== 'challenge' || seq !== state.seq) return;
   lane.reset();
   lane.setAim(state.aim);
   hideBanner();
@@ -751,6 +786,7 @@ async function settle(ms = 1700) {
 async function bowl(thrown, src, swing) {
   if (state.busy || state.phase !== 'challenge') return;
   state.busy = true;
+  state.seq++;
   hint();
   setStatus(state.flow === 'practice' ? 'Recording your swing...' : 'Analyzing your signature swing...', 'plain');
   showPower(thrown.power);
@@ -758,6 +794,8 @@ async function bowl(thrown, src, swing) {
   audio.setMusic(false);
   const pins = await lane.play(thrown);
   if (state.phase !== 'challenge') return;
+  // Which pins fell, for the verdict. The lane is reset before the verdict is drawn.
+  const down = lane.pinsDown();
   showBanner(pins);
   lane.react(pins.strike ? 'strike' : pins.gutter ? 'gutter' : 'miss');
   if (pins.strike) audio.cheer(); else if (pins.gutter) audio.aww();
@@ -786,7 +824,7 @@ async function bowl(thrown, src, swing) {
   if (state.phase !== 'challenge') return;
   if (state.flow === 'enroll') afterEnroll(sig, pins, src, rec);
   else if (state.flow === 'practice') afterPractice(sig, pins, src);
-  else afterLogin(sig, pins, src, rec);
+  else afterLogin(sig, pins, src, rec, down);
 }
 
 function afterPractice(sig, pins, src) {
@@ -861,7 +899,7 @@ function afterEnroll(sig, pins, src, rec) {
   state.autoOpen = setTimeout(enter, 7000);
 }
 
-function afterLogin(sig, pins, src, rec) {
+function afterLogin(sig, pins, src, rec, down) {
   const L = state.login;
   const claim = state.claim;
   // A sample customer's account is only ever tried with a formula swing.
@@ -912,6 +950,26 @@ function afterLogin(sig, pins, src, rec) {
     sig,
     src,
   };
+  // What the verdict screen and the side-by-side view draw. Every number in it was just measured.
+  const like = res.like || (final ? L.like : null);
+  const card = {
+    account: claim.id,
+    username: claim.username,
+    login: L.id,
+    t: Date.now(),
+    src,
+    score: res.score,
+    verdict,
+    outcome: verdict === 'match' ? 'granted' : final ? 'denied' : 'unsure',
+    bowl: L.bowls,
+    crisis: res.crisis,
+    like: like ? { username: like.account.username, score: like.score } : null,
+    pins: { pins: pins.pins, strike: pins.strike, gutter: pins.gutter },
+    down: down || null,
+    force: forceOf(sig),
+  };
+  store.remember(card);
+  const reveal = () => speech.verdict(report.outcome, final, pins, res.crisis);
   if (verdict === 'match') {
     if (res.crisis) report.also = crisisLine(res.like.account.username);
     if (!WHO) rec.participant = claim.username;
@@ -926,10 +984,8 @@ function afterLogin(sig, pins, src, rec) {
       input: src,
     });
     state.session = { account: claim, report, created: false, fresh };
-    audio.chime();
-    speech.verdict(report.outcome, final, pins, res.crisis);
-    showReport(report);
-    state.autoOpen = setTimeout(enter, 7000);
+    // The account waits behind a button. On stage the verdict stays up until somebody moves on.
+    showVerdict(card, claim, reveal);
     settleQuietly();
     return;
   }
@@ -938,9 +994,181 @@ function afterLogin(sig, pins, src, rec) {
     L.finished = true;
     recordAttempt();
   }
-  speech.verdict(report.outcome, final, pins);
-  showReport(report);
+  showVerdict(card, claim, reveal);
   settle(1200);
+}
+
+/* The verdict screen and the side-by-side view */
+
+const verdictEl = $('verdict');
+const verdict = { mode: null, final: false, anim: 0, draw: [] };
+function verdictOpen() { return !verdictEl.hidden; }
+
+function hideVerdict() {
+  cancelAnimationFrame(verdict.anim);
+  verdict.mode = null;
+  verdict.final = false;
+  verdict.draw = [];
+  if (verdictEl.hidden) return;
+  verdictEl.hidden = true;
+  verdictEl.innerHTML = '';
+  hint();
+}
+
+const VERDICT_INK = { granted: '#16a34a', denied: '#dc2626', unsure: '#d97706' };
+const swingColors = (line) => ({ line, saved: '#7c879b', band: 'rgba(124, 135, 155, 0.16)' });
+const QUIET = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const easeOut = (k) => 1 - (1 - k) ** 3;
+
+// How long ago the last log-in to this account counts as part of the same demo.
+const PAIR_WINDOW_MS = 3 * 60 * 1000;
+
+// The buttons under a verdict, by what can happen next.
+function verdictButtons(card, mode) {
+  const live = state.phase === 'challenge' && state.flow === 'login';
+  const pairs = store.lastTwo(card.account);
+  const b = [];
+  if (mode === 'hero' && card.outcome === 'unsure') {
+    b.push({ act: 'again', label: 'Bowl again', key: 'A', primary: true });
+    b.push({ act: 'leave', label: 'Cancel', key: '⌂', wii: 'HOME' });
+    return b;
+  }
+  // Straight after a second log-in, the side-by-side view is the next thing to see.
+  const prev = pairs.length === 2 && pairs[1].login === card.login ? pairs[0] : null;
+  const fresh = Boolean(prev && card.t - prev.t < PAIR_WINDOW_MS);
+  const next = live && !state.sample ? { act: 'next', label: 'Next swing' } : null;
+  const pair = mode === 'hero' && pairs.length === 2 ? { act: 'compare', label: 'Side by side' } : null;
+  const first = fresh && pair ? [pair, next] : [next, pair];
+  first.filter(Boolean).forEach((x, i) => b.push({ ...x, key: i ? '2' : 'A', wii: i ? '2' : undefined, primary: !i }));
+  const mine = state.session && state.session.account.id === card.account && card.outcome === 'granted' && mode === 'hero';
+  if (live && mine) b.push({ act: 'enter', label: 'Open account', key: '+', wii: 'PLUS' });
+  b.push({ act: 'leave', label: 'Close', key: '⌂', wii: 'HOME', primary: !b.length });
+  return b;
+}
+
+// Draws every swing graph in the overlay at `k` of the way along. Used by the animation and on resize.
+function drawVerdictGraphs(k, done) {
+  for (const d of verdict.draw) {
+    drawSwing(d.canvas, { ...d.args, k: Math.min(1, Math.max(0, k * d.speed - d.delay)), colors: swingColors(done ? d.ink : '#1f2937') });
+  }
+}
+
+function graphsFor(cards, profile) {
+  const saved = savedForce(profile);
+  if (!saved) return [];
+  // Each graph is scaled to fit its own two lines, so a wild swing in one card does not flatten the other.
+  return [...verdictEl.querySelectorAll('[data-swing]')].map((canvas, i) => ({
+    canvas,
+    ink: VERDICT_INK[cards[i].outcome],
+    delay: i * 0.25,
+    speed: 1 + (cards.length - 1) * 0.25,
+    args: { saved, force: cards[i].force, range: forceRange([saved.lo, saved.hi, cards[i].force]) },
+  }));
+}
+
+// One verdict: the score counts up as this swing is drawn over the saved one, then the mark lands.
+function showVerdict(card, account, onReveal) {
+  cancelAnimationFrame(verdict.anim);
+  verdict.mode = 'hero';
+  verdict.final = card.outcome !== 'unsure';
+  const saved = savedForce(account.profile);
+  verdictEl.innerHTML = `<div class="v-panel v-solo counting ${card.outcome}">${heroHTML(card, Boolean(saved))}
+    <div class="v-actions">${actionsHTML(verdictButtons(card, 'hero'))}</div></div>`;
+  verdictEl.hidden = false;
+  hint();
+  const panel = verdictEl.firstElementChild;
+  const num = panel.querySelector('[data-score]');
+  const fill = panel.querySelector('[data-fill]');
+  verdict.draw = graphsFor([card], account.profile);
+  const DUR = QUIET ? 0 : 1300;
+  const start = performance.now();
+  let shown = -1;
+  fill.style.width = '0%';
+  const land = () => {
+    num.textContent = card.score;
+    fill.style.width = `${card.score}%`;
+    drawVerdictGraphs(1, true);
+    panel.classList.remove('counting');
+    panel.classList.add('shown');
+    if (card.outcome === 'granted') audio.chime();
+    else if (card.outcome === 'denied') audio.denied();
+    else audio.unsure();
+    onReveal?.();
+  };
+  const step = (now) => {
+    if (verdict.mode !== 'hero') return;
+    const k = DUR ? Math.min(1, (now - start) / DUR) : 1;
+    const v = Math.round(easeOut(k) * card.score);
+    if (v !== shown) {
+      if (Math.floor(v / 5) !== Math.floor(shown / 5)) audio.tick(v / 100);
+      shown = v;
+      num.textContent = v;
+      fill.style.width = `${v}%`;
+    }
+    drawVerdictGraphs(easeOut(k), false);
+    if (k < 1) verdict.anim = requestAnimationFrame(step);
+    else land();
+  };
+  verdict.anim = requestAnimationFrame(step);
+}
+
+// The last two log-ins to one account, side by side.
+function showPair(accountId) {
+  const account = store.get(accountId);
+  const cards = account ? store.lastTwo(accountId) : [];
+  if (cards.length < 2) return;
+  cancelAnimationFrame(verdict.anim);
+  verdict.mode = 'pair';
+  verdict.final = true;
+  const split = cards.some((c) => c.outcome === 'granted') && cards.some((c) => c.outcome === 'denied');
+  verdictEl.innerHTML = `<div class="v-panel v-two">${pairHTML(cards, Boolean(savedForce(account.profile)), split ? 'We turned identity theft into a sport.' : '')}
+    <div class="v-actions">${actionsHTML(verdictButtons(cards[1], 'pair'))}</div></div>`;
+  verdictEl.hidden = false;
+  hint();
+  verdict.draw = graphsFor(cards, account.profile);
+  audio.whoosh();
+  const DUR = QUIET ? 0 : 1500;
+  const start = performance.now();
+  const step = (now) => {
+    if (verdict.mode !== 'pair') return;
+    const k = DUR ? Math.min(1, (now - start) / DUR) : 1;
+    drawVerdictGraphs(k, true);
+    if (k < 1) verdict.anim = requestAnimationFrame(step);
+  };
+  verdict.anim = requestAnimationFrame(step);
+  track('side_by_side_viewed', {
+    first_score: cards[0].score,
+    second_score: cards[1].score,
+    first_verdict: cards[0].outcome,
+    second_verdict: cards[1].outcome,
+    one_in_one_out: split,
+    source: cards[1].src,
+  });
+}
+
+window.addEventListener('resize', () => { if (verdictOpen()) drawVerdictGraphs(1, true); });
+
+// Straight on to the next log-in to the same account, without going back to the front page.
+function nextSwing() {
+  if (state.phase !== 'challenge' || state.flow !== 'login' || !state.claim) return;
+  if (state.sample) { cancel(); return; }
+  recordAttempt();
+  clearTimeout(state.autoOpen);
+  hideVerdict();
+  hideReport();
+  hideBanner();
+  state.seq++;
+  state.session = null;
+  state.login = newLogin();
+  state.busy = false;
+  lane.reset();
+  lane.setAim(state.aim);
+  audio.setMusic(true);
+  header();
+  setStatus(`Bowl ${state.username}'s password.`, 'plain');
+  hint();
+  speech.waiting(900);
+  track('challenge_opened', { flow: 'login', input: srcKind(), again_on_same_account: true });
 }
 
 // After a verdict that ends the bowling: tidy the lane but keep it closed.
@@ -972,30 +1200,374 @@ function enter() {
 
 const clock = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// Declined log-ins to this account. `fresh` of them happened since the owner was last in.
-function attemptsPanel(a, fresh) {
+// The account page is a bank's dashboard. Everything on it comes from the account and the
+// report of the log-in that opened it: nothing here is decided, only shown.
+
+const ACCT_STILL = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const avgOf = (list) => list.reduce((s, v) => s + v, 0) / (list.length || 1);
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const UI_FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif';
+const INK = { ok: '#12a150', bad: '#dc2626', mid: '#d97706', file: '#c9a227' };
+
+// Line icons, drawn with currentColor.
+const ICON = {
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  x: '<path d="M7 7l10 10M17 7L7 17"/>',
+  shield: '<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M8.7 12l2.3 2.3 4.4-4.6"/>',
+  alert: '<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z"/><path d="M12 8v4.5M12 16h.01"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>',
+  out: '<path d="M14 4h3.5A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5H14"/><path d="M10 8l-4 4 4 4M6 12h10"/>',
+  pin: '<path d="M12 2.5c-1.6 0-2.5 1.3-2.5 2.8 0 1.3.7 2 .7 3.1 0 1.4-2.2 3.4-2.2 7.4 0 3.2 1.6 5.7 4 5.7s4-2.5 4-5.7c0-4-2.2-6-2.2-7.4 0-1.1.7-1.8.7-3.1 0-1.5-.9-2.8-2.5-2.8z"/><path d="M10.3 8.2h3.4"/>',
+  shoe: '<path d="M3 17.5V9h5l1.5 3.5 6.5 1.5c2.4.6 5 1.6 5 3.5v0H3z"/><path d="M3 20h18"/>',
+  drop: '<path d="M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0C6 9.9 12 3.5 12 3.5z"/>',
+  trend: '<path d="M4 17l5.5-5.5 4 4L20 9"/><path d="M15 9h5v5"/>',
+  nacho: '<path d="M12 4l8.5 15h-17z"/><circle cx="11" cy="13" r=".8"/><circle cx="13.5" cy="16" r=".8"/>',
+  watch: '<rect x="7" y="7" width="10" height="10" rx="3"/><path d="M9 7l.8-3.5h4.4L15 7M9 17l.8 3.5h4.4L15 17M12 10v2.2l1.4 1"/>',
+  down: '<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M4 19.5h16"/>',
+  spark: '<path d="M4 18l4.5-5 3.5 3 7.5-9"/>',
+};
+const icon = (name) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICON[name] || ICON.pin}</svg>`;
+
+// A ring that fills to the score, with a tick at the pass mark.
+function scoreRing(score, ok) {
+  const pass = MATCH_CONFIG.scoreMatch / 100;
+  const a = pass * Math.PI * 2;
+  const at = (r) => `${(50 + r * Math.cos(a)).toFixed(1)} ${(50 + r * Math.sin(a)).toFixed(1)}`;
+  return `<div class="ring ${ok ? 'ok' : 'bad'}" aria-hidden="true">
+    <svg viewBox="0 0 100 100">
+      <circle class="track" cx="50" cy="50" r="42" />
+      <circle class="val" cx="50" cy="50" r="42" pathLength="100" style="stroke-dasharray:${score} 100" />
+      <path class="mark" d="M${at(35)} L${at(49)}" />
+    </svg>
+    <span>${icon(ok ? 'shield' : 'alert')}</span>
+  </div>`;
+}
+
+// Ten pins in a rack, with as many knocked down as fell. Which ones fell is not known here.
+function miniRack(pins) {
+  const n = pins ? (pins.strike ? 10 : pins.pins) : 0;
+  const order = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const rows = [[6, 7, 8, 9], [3, 4, 5], [1, 2], [0]];
+  return `<div class="minirack" aria-hidden="true">${rows.map((row) => `<div>${row.map((i) => `<i class="${order.indexOf(i) < n ? 'down' : ''}"></i>`).join('')}</div>`).join('')}</div>`;
+}
+
+function acctHero(a, created) {
+  const last4 = String(a.number).replace(/\s/g, '').slice(-4);
+  const flag = a.sample ? 'Sample customer · formula swing' : a.source === 'pointer' ? 'Pointer password · simulated' : '';
+  return `
+    <section class="hero">
+      <div class="hero-main">
+        <div class="hero-who">
+          <div class="ball" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div>
+            <p class="hello">${created ? `Welcome to ${esc(ID.bank)}` : 'Welcome back'}</p>
+            <h1 id="acct-name">${esc(a.username)}</h1>
+            <p class="sub">${a.sample ? esc(a.name) : `On the lanes: ${esc(a.name)}`} · Account •••• ${esc(last4)}</p>
+          </div>
+        </div>
+        <div class="pills">
+          <span class="pill ok">${icon('check')}${created ? 'Password set' : 'Identity verified'}</span>
+          <span class="pill glass">${icon('pin')}Authenticated with ${esc(ID.name)}</span>
+          ${flag ? `<span class="pill warn">${esc(flag)}</span>` : ''}
+        </div>
+        <p class="bal-label">Available balance</p>
+        <div class="balance" data-balance="${a.balance}">${money(a.balance)}</div>
+        <p class="bal-note">Not real. Not withdrawable. Not even with a strike.</p>
+      </div>
+      <div class="bowlcard" aria-hidden="true">
+        <div class="bc-top"><b>${esc(ID.bank)}</b><span>Platinum Lane</span></div>
+        <div class="bc-chip"><i></i><i></i><i></i></div>
+        <div class="bc-num">${esc(a.number)}</div>
+        <div class="bc-bottom">
+          <div><small>Card holder</small><b>${esc(a.username)}</b></div>
+          <div><small>PIN</small><b>Bowl it</b></div>
+        </div>
+      </div>
+      <p class="hero-foot">${icon('lock')}<span><b>No password was typed.</b> You bowled it.</span></p>
+    </section>`;
+}
+
+// Why the account opened: the identity result and the bowling result, kept well apart.
+function acctAuth(a, r, created) {
+  const ok = VERDICT_CLASS[r.outcome] === 'ok';
+  const identity = r.score != null ? `
+      <div class="tile identity">
+        ${scoreRing(r.score, ok)}
+        <div>
+          <span class="t-label">Bowlometric Identity Score</span>
+          <b class="t-big">${r.score}<i>/100</i></b>
+          <span class="chip ok">${icon('check')}It’s you</span>
+          <em>${MATCH_CONFIG.scoreMatch} passes. Similarity, not a probability.</em>
+        </div>
+      </div>` : `
+      <div class="tile identity">
+        ${scoreRing(100, true)}
+        <div>
+          <span class="t-label">Password set</span>
+          <b class="t-big">${a.profile.templates.length}<i>swings on file</i></b>
+          <span class="chip ok">${icon('check')}Only you can get in</span>
+          <em>Your backswing is now the only way in.</em>
+        </div>
+      </div>`;
+  const bowling = r.pins ? `
+      <div class="tile bowling">
+        <span class="t-label">Bowling result</span>
+        <b class="t-mid">${esc(pinsLabel(r.pins))}</b>
+        ${miniRack(r.pins)}
+        <span class="chip muted">Not considered</span>
+      </div>` : `
+      <div class="tile bowling">
+        <span class="t-label">On the lanes you are</span>
+        <b class="t-mid name">${esc(a.name)}</b>
+        <span class="chip muted">A nickname, not a password</span>
+      </div>`;
+  const rows = r.rows || [];
+  const compare = Boolean(r.sig);
+  const matched = rows.filter((x) => x.ok).length;
+  const traitsHTML = rows.map((t) => `
+      <li>
+        <span class="tl">${esc(t.label)}</span>
+        ${compare ? `<span class="tv">${t.value} <small>${esc(t.unit)}</small></span>` : ''}
+        <span class="tf">${t.onFile} <small>${esc(t.unit)}</small></span>
+        ${compare ? `<span class="tk ${t.ok ? 'ok' : 'bad'}">${icon(t.ok ? 'check' : 'x')}</span>` : ''}
+      </li>`).join('');
+  const notes = [];
+  if (r.outcome === 'recognized') notes.push(...rows.filter((x) => x.ok).slice(0, 2).map(traitLine), SKILL_LINE);
+  const title = created ? 'Your backswing is your password'
+    : `Why we let you in${r.pins && r.pins.gutter ? ', gutter ball and all' : ''}`;
+  return `
+    <section class="panel auth">
+      <div class="panel-head">
+        <div>
+          <span class="kicker">${created ? 'New account' : 'Sign-in report'}</span>
+          <h2>${esc(title)}</h2>
+          <p class="lede">${esc(r.line)}</p>
+        </div>
+        ${SOURCE_NOTE[r.src] ? `<span class="pill warn small" title="${esc(SOURCE_NOTE[r.src])}">${r.src === 'synthetic' ? 'Formula swing' : 'Simulated input'}</span>` : ''}
+      </div>
+      <div class="verdict-row">
+        ${identity}
+        <div class="neq" aria-hidden="true">≠</div>
+        ${bowling}
+      </div>
+      <p class="footnote">${created ? 'The pins never decide anything.' : 'Pins do not affect authentication.'}</p>
+      ${r.also ? `<p class="also">${esc(r.also)}</p>` : ''}
+      ${r.compare ? `
+      <div class="auth-detail">
+        <div class="box">
+          <div class="box-head">
+            <h3>Swing signature</h3>
+            <div class="legend">
+              <span><i style="background:${INK.file}"></i>On file</span>
+              ${compare ? `<span><i style="background:${ok ? INK.ok : INK.bad}"></i>This swing</span>` : ''}
+            </div>
+          </div>
+          <div class="chart"><canvas data-sig></canvas></div>
+          <p class="caption">Force through the swing, lined up at the release.</p>
+        </div>
+        <div class="box">
+          <div class="box-head">
+            <h3>Measured</h3>
+            ${compare ? `<span class="count ${matched === rows.length ? 'ok' : ''}">${matched} of ${rows.length} match</span>` : ''}
+          </div>
+          <ul class="tlist">
+            <li class="heads"><span class="tl"></span>${compare ? '<span class="tv">This swing</span>' : ''}<span class="tf">On file</span>${compare ? '<span class="tk"></span>' : ''}</li>
+            ${traitsHTML}
+          </ul>
+        </div>
+      </div>` : ''}
+      ${notes.length ? `<ul class="notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+    </section>`;
+}
+
+// Successful sign-ins and declined attempts on this account, newest first.
+function acctSecurity(a, fresh) {
   const total = a.attemptsEver;
-  if (!total) {
-    return `<h3>Attempts on your account</h3>
-      <p class="fine left">Nobody has typed your username and bowled the wrong swing. Yet.</p>`;
+  const newOnes = new Set(fresh ? a.attempts.slice(-fresh) : []);
+  const events = [
+    ...a.history.map((h) => ({ t: h.t, ok: true, h })),
+    ...a.attempts.map((x) => ({ t: x.t, ok: false, x })),
+  ].sort((p, q) => q.t - p.t).slice(0, 5);
+  const banner = !total
+    ? `<div class="sec-banner ok">${icon('shield')}<div><b>All clear</b><span>Nobody has bowled your username with the wrong swing. Yet.</span></div></div>`
+    : `<div class="sec-banner ${fresh ? 'bad' : 'calm'}">${icon('alert')}<div><b>${plural(total, 'declined sign-in')}</b><span>${fresh ? `${fresh} since your last visit. ` : ''}Somebody typed your username and bowled the wrong swing.</span></div></div>`;
+  const feed = events.map((e) => (e.ok ? `
+      <li>
+        <span class="dot ok">${icon('check')}</span>
+        <div><b>Signed in</b><span>Bowled like you</span></div>
+        <div class="rt"><b>${e.h.score}<small>/100</small></b><span>${clock(e.t)}</span></div>
+      </li>` : `
+      <li class="${newOnes.has(e.x) ? 'new' : ''}">
+        <span class="dot bad">${icon('x')}</span>
+        <div><b>Declined: identity mismatch${newOnes.has(e.x) ? ' <em>New</em>' : ''}</b><span>${esc(attemptLine(e.x))}</span></div>
+        <div class="rt"><b>${e.x.score}<small>/100 as you</small></b><span>${clock(e.t)}</span></div>
+      </li>`)).join('');
+  return `
+    <section class="panel security">
+      <div class="panel-head"><h3>Account security</h3><span class="pill ${fresh ? 'bad' : 'okfaint'} small">${fresh ? `${fresh} new` : 'Secure'}</span></div>
+      ${banner}
+      <div class="stats3">
+        <div><b>${a.logins}</b><span>Sign-ins</span></div>
+        <div><b>${total}</b><span>Declined</span></div>
+        <div><b>${fresh}</b><span>Since last visit</span></div>
+      </div>
+      <ul class="feed">${feed}</ul>
+    </section>`;
+}
+
+// How much like themselves the owner bowls, and how the recent attempts went.
+function acctYouness(a) {
+  const own = a.history.map((h) => h.score);
+  const avg = Math.round(avgOf(own));
+  const recent = [
+    ...a.history.map((h) => ({ t: h.t, score: h.score, ok: true })),
+    ...a.attempts.map((x) => ({ t: x.t, score: x.score, ok: false })),
+  ].sort((p, q) => p.t - q.t).slice(-6);
+  return `
+    <section class="panel youness">
+      <div class="panel-head"><h3>You-ness</h3><span class="pill okfaint small">${esc(younessLabel(avg))}</span></div>
+      <div class="yn-top">
+        <b class="yn-big">${avg}<i>/100</i></b>
+        <span>Average score as yourself<br>over ${plural(own.length, 'sign-in')}</span>
+      </div>
+      <div class="ychart"><canvas data-youness></canvas></div>
+      <div class="yn-chips" aria-label="Recent scores, oldest to newest">
+        ${recent.map((p) => `<span class="sc ${p.ok ? 'ok' : 'bad'}" title="${p.ok ? 'Signed in' : 'Declined'} at ${clock(p.t)}">${icon(p.ok ? 'check' : 'x')}${p.score}</span>`).join('')}
+      </div>
+      <div class="legend">
+        <span><i style="background:${INK.ok}"></i>You, getting in</span>
+        <span><i class="dotkey" style="background:${INK.bad}"></i>Declined</span>
+        <span><i class="dashkey"></i>${MATCH_CONFIG.scoreMatch} to pass</span>
+      </div>
+    </section>`;
+}
+
+function acctStatement() {
+  const days = [];
+  for (const row of STATEMENT) {
+    const [, , , day] = row;
+    let group = days.find((d) => d.day === day);
+    if (!group) days.push(group = { day, rows: [] });
+    group.rows.push(row);
   }
-  const rows = a.attempts.slice(-5).reverse().map((x, i) => `
-    <tr class="${i < fresh ? 'new' : ''}">
-      <td>${clock(x.t)}${i < fresh ? ' <b>new</b>' : ''}</td>
-      <td>${esc(attemptLine(x))}</td>
-      <td>${x.score} / 100 as you</td>
-    </tr>`).join('');
-  return `<h3>Attempts on your account</h3>
-    <p class="alarm ${fresh ? 'on' : ''}">${total} declined log-in${total === 1 ? '' : 's'} to this account${fresh ? `, ${fresh} since you were last here` : ''}.</p>
-    <table class="statement attempts">${rows}</table>
-    <p class="fine left">Each one typed your username and bowled a swing that did not match yours. One that fits nobody on file may be a stranger, or you on a bad day.</p>`;
+  const net = STATEMENT.reduce((s, [, v]) => s + v, 0);
+  return `
+    <section class="panel statement-card">
+      <div class="panel-head"><h3>Recent activity</h3><span class="muted">CAD</span></div>
+      ${days.map((d) => `
+        <p class="tx-day">${esc(d.day)}</p>
+        <ul class="tx">${d.rows.map(([what, v, cat, , ic]) => `
+          <li>
+            <span class="tx-ic">${icon(ic)}</span>
+            <div><b>${esc(what)}</b><span>${esc(cat || '')}</span></div>
+            <span class="amt ${v > 0 ? 'in' : ''}">${v > 0 ? '+' : '−'}${money(Math.abs(v))}</span>
+          </li>`).join('')}
+        </ul>`).join('')}
+      <div class="tx-net"><span>Net this week</span><b class="${net > 0 ? 'in' : ''}">${net > 0 ? '+' : '−'}${money(Math.abs(net))}</b></div>
+    </section>`;
+}
+
+// The branch ledger: every log-in bowl at this branch, as counts.
+function ledgerStats() {
+  const l = store.ledger();
+  if (!l.bowls) return null;
+  const per = l.logins ? (l.loginBowls / l.logins).toFixed(1) : '–';
+  return [
+    [l.guttersIn, 'Gutter balls let in'],
+    [l.strikesOut, 'Strikes turned away'],
+    [l.crises, 'Identity crises'],
+    [per, 'Bowls per sign-in'],
+  ];
+}
+
+function acctFacts(a) {
+  const per = a.logins ? (a.bowls / a.logins).toFixed(1) : '–';
+  const ledger = ledgerStats();
+  const tiles = (list) => list.map(([v, label]) => `<div><b>${esc(v)}</b><span>${esc(label)}</span></div>`).join('');
+  return `
+    <section class="panel facts">
+      <div class="panel-head"><h3>Your password</h3><span class="muted">${a.profile.gyro ? 'With MotionPlus' : 'Accelerometer only'}</span></div>
+      <div class="tiles">${tiles([
+        [a.profile.templates.length, 'Swings on file'],
+        [a.logins, 'Sign-ins'],
+        [per, 'Bowls per sign-in'],
+        [a.guttersIn, 'Gutter balls that got in'],
+      ])}</div>
+      ${ledger ? `
+      <div class="panel-head sub"><h3>Branch ledger</h3><span class="muted">All customers</span></div>
+      <div class="tiles ledger-tiles">${tiles(ledger)}</div>` : ''}
+    </section>`;
+}
+
+// Draws force over the swing: the swings on file in gold, this swing over them in the verdict's colour.
+function drawSignature(canvas, r) {
+  if (!canvas || !r.compare) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h) return;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const g = canvas.getContext('2d');
+  g.scale(dpr, dpr);
+  const sets = r.compare.profile.templates.map((t) => ({ seq: t.seq, mine: false }));
+  if (r.sig) sets.push({ seq: r.sig.seq, mine: true });
+  let top = 2.5;
+  for (const s of sets) for (const p of s.seq) top = Math.max(top, Math.hypot(p[0], p[1], p[2]));
+  const padT = 22;
+  const padB = 8;
+  const X = (i, n) => (i / (n - 1)) * w;
+  const Y = (v) => h - padB - (v / top) * (h - padT - padB);
+  // Faint guide lines, one per g.
+  g.strokeStyle = 'rgba(15, 23, 42, 0.06)';
+  g.lineWidth = 1;
+  for (let v = 1; v < top; v++) { g.beginPath(); g.moveTo(0, Math.round(Y(v)) + 0.5); g.lineTo(w, Math.round(Y(v)) + 0.5); g.stroke(); }
+  g.font = `600 11px ${UI_FONT}`;
+  g.fillStyle = 'rgba(100, 116, 139, 0.9)';
+  g.fillText('Force', 0, 11);
+  // The release sits three quarters of the way along every signature.
+  const rx = Math.round(w * 0.75) + 0.5;
+  g.strokeStyle = 'rgba(15, 23, 42, 0.28)';
+  g.setLineDash([4, 4]);
+  g.beginPath(); g.moveTo(rx, padT - 4); g.lineTo(rx, h); g.stroke();
+  g.setLineDash([]);
+  const label = 'Release';
+  const lw = g.measureText(label).width + 14;
+  g.fillStyle = '#0f172a';
+  g.beginPath(); g.roundRect(rx - lw / 2, 0, lw, 18, 9); g.fill();
+  g.fillStyle = '#fff';
+  g.fillText(label, rx - lw / 2 + 7, 13);
+  const ink = VERDICT_CLASS[r.outcome] === 'ok' ? INK.ok : INK.bad;
+  for (const s of sets) {
+    const pts = s.seq.map((p, i) => [X(i, s.seq.length), Y(Math.hypot(p[0], p[1], p[2]))]);
+    if (s.mine) {
+      const fill = g.createLinearGradient(0, padT, 0, h);
+      fill.addColorStop(0, `${ink}33`);
+      fill.addColorStop(1, `${ink}00`);
+      g.fillStyle = fill;
+      g.beginPath();
+      g.moveTo(pts[0][0], h);
+      for (const [x, y] of pts) g.lineTo(x, y);
+      g.lineTo(pts[pts.length - 1][0], h);
+      g.fill();
+    }
+    g.strokeStyle = s.mine ? ink : 'rgba(201, 162, 39, 0.75)';
+    g.lineWidth = s.mine ? 3 : 2;
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.beginPath();
+    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.stroke();
+  }
 }
 
 // You-ness over time: the owner's scores as a line, declined attempts as dots, and the pass mark.
 function drawYouness(canvas, a) {
+  if (!canvas) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = canvas.clientWidth || canvas.width;
-  const h = canvas.clientHeight || canvas.height;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h) return;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
   const g = canvas.getContext('2d');
@@ -1004,76 +1576,105 @@ function drawYouness(canvas, a) {
     ...a.history.map((x) => ({ t: x.t, score: x.score, own: true })),
     ...a.attempts.map((x) => ({ t: x.t, score: x.score, own: false })),
   ].sort((p, q) => p.t - q.t);
-  const pad = 10;
+  const pad = 8;
   const x = (i) => (points.length > 1 ? pad + (i / (points.length - 1)) * (w - pad * 2) : w / 2);
-  const y = (score) => h - 6 - (score / 100) * (h - 14);
-  g.strokeStyle = 'rgba(0,0,0,0.3)';
-  g.setLineDash([3, 3]);
-  g.beginPath();
-  g.moveTo(0, y(MATCH_CONFIG.scoreMatch));
-  g.lineTo(w, y(MATCH_CONFIG.scoreMatch));
-  g.stroke();
+  const y = (score) => h - pad - (score / 100) * (h - pad * 2);
+  // The pass mark. Above it is where an owner should be.
+  const passY = y(MATCH_CONFIG.scoreMatch);
+  g.strokeStyle = 'rgba(15, 23, 42, 0.25)';
+  g.setLineDash([4, 4]);
+  g.beginPath(); g.moveTo(0, Math.round(passY) + 0.5); g.lineTo(w, Math.round(passY) + 0.5); g.stroke();
   g.setLineDash([]);
-  g.fillStyle = 'rgba(0,0,0,0.45)';
-  g.font = '10px Roboto, Arial, sans-serif';
-  g.fillText(`${MATCH_CONFIG.scoreMatch} passes`, 2, y(MATCH_CONFIG.scoreMatch) - 3);
-  g.strokeStyle = '#0f9d58';
-  g.lineWidth = 2;
-  g.lineJoin = 'round';
-  g.beginPath();
-  let started = false;
-  points.forEach((p, i) => {
-    if (!p.own) return;
-    if (started) g.lineTo(x(i), y(p.score)); else g.moveTo(x(i), y(p.score));
-    started = true;
-  });
-  g.stroke();
-  points.forEach((p, i) => {
-    g.fillStyle = p.own ? '#0f9d58' : '#d93025';
+  const own = points.map((p, i) => [p, i]).filter(([p]) => p.own);
+  if (own.length > 1) {
+    const fill = g.createLinearGradient(0, 0, 0, h);
+    fill.addColorStop(0, 'rgba(18, 161, 80, 0.16)');
+    fill.addColorStop(0.7, 'rgba(18, 161, 80, 0)');
+    g.fillStyle = fill;
     g.beginPath();
-    g.arc(x(i), y(p.score), p.own ? 3 : 4, 0, Math.PI * 2);
+    g.moveTo(x(own[0][1]), h);
+    for (const [p, i] of own) g.lineTo(x(i), y(p.score));
+    g.lineTo(x(own[own.length - 1][1]), h);
     g.fill();
+    g.strokeStyle = INK.ok;
+    g.lineWidth = 3;
+    g.lineJoin = 'round';
+    g.beginPath();
+    own.forEach(([p, i], k) => (k ? g.lineTo(x(i), y(p.score)) : g.moveTo(x(i), y(p.score))));
+    g.stroke();
+  }
+  points.forEach((p, i) => {
+    g.fillStyle = '#fff';
+    g.beginPath(); g.arc(x(i), y(p.score), p.own ? 5 : 6, 0, Math.PI * 2); g.fill();
+    g.fillStyle = p.own ? INK.ok : INK.bad;
+    g.beginPath(); g.arc(x(i), y(p.score), p.own ? 3.5 : 4.5, 0, Math.PI * 2); g.fill();
   });
 }
+
+// The balance counts up when the account opens. It is a lot of money, and it should feel like it.
+function countUp(el) {
+  if (!el) return;
+  const to = Number(el.dataset.balance);
+  if (ACCT_STILL || !Number.isFinite(to)) return;
+  const start = performance.now();
+  const DUR = 1200;
+  const step = (now) => {
+    if (!el.isConnected) return;
+    const k = Math.min(1, (now - start) / DUR);
+    el.textContent = money(to * (1 - (1 - k) ** 4));
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function drawAccountCharts() {
+  if (state.phase !== 'account' || !state.session) return;
+  const el = $('inside');
+  drawSignature(el.querySelector('[data-sig]'), state.session.report);
+  drawYouness(el.querySelector('[data-youness]'), state.session.account);
+}
+let acctResize = 0;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(acctResize);
+  acctResize = requestAnimationFrame(drawAccountCharts);
+});
 
 function renderAccount() {
   const { account: a, report: r, created, fresh } = state.session;
   const el = $('inside');
-  const rows = STATEMENT.map(([what, v]) => `<tr><td>${esc(what)}</td><td class="${v < 0 ? 'neg' : ''}">${money(v)}</td></tr>`).join('');
-  const per = a.logins ? (a.bowls / a.logins).toFixed(1) : null;
   const charted = a.history.length + a.attempts.length;
   el.style.setProperty('--c', a.color);
   el.innerHTML = `
-    <div class="who">
-      <div class="ball" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div>
-        <small>${esc(ID.bank)} · signed in with ${esc(ID.name)}</small>
-        <h1 id="acct-name">${esc(a.username)}</h1>
-        <span>${a.sample ? esc(a.name) : `On the lanes: ${esc(a.name)}`} · Account ${esc(a.number)}${a.sample ? ' · sample customer, formula swing' : a.source === 'pointer' ? ' · pointer password (simulated)' : ''}</span>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">${icon('pin')}</span>
+        <b>${esc(ID.bank)}</b>
+        <span class="by">Secured by ${esc(ID.name)}</span>
       </div>
+      <button class="signout" type="button" id="signout">${icon('out')}Sign out<kbd class="remote">A</kbd></button>
+    </header>
+    ${acctHero(a, created)}
+    ${acctAuth(a, r, created)}
+    <div class="acct-grid">
+      ${acctSecurity(a, fresh)}
+      ${charted ? acctYouness(a) : ''}
     </div>
-    <div class="balance">${money(a.balance)}</div>
-    <p class="fine left">Available balance. Not real. Not withdrawable. Not even with a strike.</p>
-    <div class="why ${VERDICT_CLASS[r.outcome]}">
-      <h3>${created ? 'Your account is open. Your backswing is the only way in.' : `Why we let you in${r.pins && r.pins.gutter ? ', gutter ball and all' : ''}`}</h3>
-      ${reportBody(r)}
+    <div class="acct-grid wide-left">
+      ${acctStatement()}
+      ${acctFacts(a)}
     </div>
-    ${attemptsPanel(a, fresh)}
-    ${charted ? `<h3>You-ness over time</h3>
-    <div class="graph"><canvas data-youness></canvas></div>
-    <div class="key"><span><i style="background:#0f9d58"></i>You, getting in</span><span><i style="background:#d93025"></i>Declined attempts</span><span class="what">Score against your swings, oldest to newest</span></div>` : ''}
-    <h3>Recent activity</h3>
-    <table class="statement">${rows}</table>
-    <p class="fine left">${a.profile.templates.length} swings on file${a.profile.gyro ? ', with MotionPlus' : ''}. Logged in ${a.logins} time${a.logins === 1 ? '' : 's'}${per ? `, in ${per} bowl${per === '1.0' ? '' : 's'} on average` : ''}. Gutter balls that got in: ${a.guttersIn}.</p>
-    <div class="row">
-      <button class="submit" type="button" id="signout">Sign out</button>
-      ${a.sample ? '' : '<button class="link danger" type="button" data-act="close">Close this account</button>'}
-    </div>
-    <p class="fine">No password was typed. You bowled it.</p>`;
+    <footer class="acct-foot">
+      <span>${esc(ID.bank)} is a member of the BDIC, the Bowling Deposit Insurance Corporation. Deposits are insured up to one strike.</span>
+      ${a.sample ? '' : '<button class="danger-btn" type="button" data-act="close">Close this account</button>'}
+    </footer>`;
   $('inside').hidden = false;
-  drawReportGraph(el, r);
-  const chart = el.querySelector('[data-youness]');
-  if (chart) drawYouness(chart, a);
+  // The page opens at its top, with the charts drawn once the layout has settled.
+  window.scrollTo(0, 0);
+  requestAnimationFrame(() => {
+    drawSignature(el.querySelector('[data-sig]'), r);
+    drawYouness(el.querySelector('[data-youness]'), a);
+  });
+  countUp(el.querySelector('[data-balance]'));
   $('signout').addEventListener('click', signOut);
 }
 
@@ -1089,6 +1690,11 @@ const actions = {
   enter,
   leave: cancel,
   again,
+  next: nextSwing,
+  compare: () => {
+    const a = state.phase === 'challenge' ? state.claim : store.find($('username').value);
+    if (a) showPair(a.id);
+  },
   sample: (el) => openChallenge('login', el.dataset.swing, el.dataset.as),
   practice: () => openChallenge('practice'),
   export: () => {
@@ -1117,7 +1723,12 @@ $('create').addEventListener('click', () => openChallenge('enroll'));
 $('login').addEventListener('click', () => openChallenge('login'));
 $('cancel').addEventListener('click', cancel);
 $('username').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') $('login').click(); });
-$('username').addEventListener('input', () => { if (state.note) { state.note = null; showNote(); } });
+$('username').addEventListener('input', () => {
+  if (state.note) { state.note = null; showNote(); }
+  pairButton();
+});
+$('username').addEventListener('focus', () => $('username').select());
+$('pair').addEventListener('click', () => { audio.start(); audio.click(); actions.compare(); });
 
 $('verify').addEventListener('click', () => {
   audio.click();
@@ -1189,6 +1800,8 @@ function boot() {
 // For automated checks and for rehearsal.
 window.bowlid = { state, hub, lane: null, store, recorded, replaySwing, syntheticSet, bowl, identify, verifyClaim };
 
+// The last username bowled for is already typed in, so the next log-in is one press of A.
+$('username').value = store.lastUser();
 setPhase('home');
 boot();
 
