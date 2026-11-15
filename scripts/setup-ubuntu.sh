@@ -98,6 +98,13 @@ else
   fi
 fi
 
+# Python is only used by two small helpers: the driver fix and reading the remote's start values.
+if command -v python3 >/dev/null; then
+  ok "python3 found"
+else
+  info "python3 is missing. The bridge still works. ./scripts/fix-driver.sh cannot tidy memory without it."
+fi
+
 # JavaScript dependencies.
 if command -v npm >/dev/null && [ -f package.json ]; then
   echo
@@ -136,6 +143,7 @@ Pair the Wii remote
 
 Then
   ./scripts/check-controller.sh   Check every sensor on the remote.
+  node bridge/calibrate.mjs       Calibrate the accelerometer (once per remote).
   ./scripts/start.sh              Start the bridge and the app.
 EOF
 

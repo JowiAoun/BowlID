@@ -40,7 +40,7 @@ Every remote reads a little off zero. Without calibration, a still remote reads 
 3. Copy the two lines it prints into the `.env` file at the repo root.
 4. Restart the bridge.
 
-For the team's remote (Bluetooth address ending `31:6B`), measured on 2026-11-15:
+For the team's remote, measured on 2026-11-15:
 
 ```
 BOWLBANK_ACCEL_ZERO=-13,-19,-23
