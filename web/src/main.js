@@ -1,4 +1,4 @@
-// Bowlometrics. A username and no password: the password is the way the account's owner bowls.
+// BowlID. A username and no password: the password is the way the account's owner bowls.
 // The page has a username field and two buttons. Either button opens a CAPTCHA-style window
 // with a bowling lane in it. The pins never decide anything. The swing is checked against the
 // one account the username names, and a swing that does not fit is an attempt on that account.
@@ -692,7 +692,7 @@ function showReport(r) {
   el.className = `report ${cls}`;
   el.innerHTML = `
     <div class="head">
-      <small>Bowlometrics biometric report</small>
+      <small>BowlID biometric report</small>
       <h2>${esc(r.title)}</h2>
       <p>${esc(r.line)}</p>
       ${r.also && r.outcome !== 'recognized' ? `<p class="also">${esc(r.also)}</p>` : ''}
@@ -1127,13 +1127,24 @@ $('verify').addEventListener('click', () => {
   setStatus(state.flow === 'enroll' ? 'There is nothing to click. Please bowl.' : 'Your backswing is your password. Please bowl.');
 });
 
+// The restart button starts the whole test again: enrollment goes back to throw one,
+// and a log-in gets a fresh set of bowls.
 $('reload').addEventListener('click', () => {
   audio.click();
-  if (state.busy || !lane || state.login.over) return;
+  if (state.busy || !lane || state.phase !== 'challenge' || state.login.over) return;
+  // Starting again after an inconclusive bowl still counts as having tried, like walking away.
+  recordAttempt();
+  recorder.cancel();
+  speech.clear();
+  if (state.flow === 'enroll') state.enroll = { throws: [], restarts: 0 };
+  state.login = newLogin();
   lane.reset();
+  lane.setAim(state.aim);
   hideBanner();
   hideReport();
-  setStatus('New challenge loaded. It is also bowling.', 'plain');
+  header();
+  drawSlots();
+  setStatus(state.flow === 'enroll' ? 'Starting again from the first throw. It is still bowling.' : 'New challenge loaded. It is also bowling.', 'plain');
   hint();
 });
 
