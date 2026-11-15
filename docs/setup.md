@@ -1,6 +1,6 @@
 # Setup
 
-Everything needed to run BowlID on your own machine. The README covers what it is. This covers getting it running.
+Everything needed to run Bowl ID on your own machine. The README covers what it is. This covers getting it running.
 
 ## Requirements
 

@@ -12,7 +12,7 @@ export default defineConfig({
     outDir: '../dist',
     emptyOutDir: true,
     target: 'es2020',
-    // BowlID is the front page. The bank it grew out of is kept at /bank.html.
+    // Bowl ID is the front page. The bank it grew out of is kept at /bank.html.
     rollupOptions: { input: { main: page('index.html'), bank: page('bank.html') } },
   },
   server: { port: 5173, strictPort: true },

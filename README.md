@@ -1,6 +1,6 @@
 <div align="center">
 
-# BowlID
+# Bowl ID
 
 #### Stupidest Metric | A login with no password field: your password is how you bowl
 

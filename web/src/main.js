@@ -1,4 +1,4 @@
-// BowlID. A username and no password: the password is the way the account's owner bowls.
+// Bowl ID. A username and no password: the password is the way the account's owner bowls.
 // The page has a username field and two buttons. Either button opens a CAPTCHA-style window
 // with a bowling lane in it. The pins never decide anything. The swing is checked against the
 // one account the username names, and a swing that does not fit is an attempt on that account.
@@ -695,7 +695,7 @@ function showReport(r) {
   el.className = `report ${cls}${compact ? ' compact' : ''}`;
   el.innerHTML = `
     <div class="head">
-      <small>BowlID biometric report</small>
+      <small>Bowl ID biometric report</small>
       <h2>${esc(r.title)}</h2>
       <p>${esc(r.line)}</p>
       ${r.also && r.outcome !== 'recognized' ? `<p class="also">${esc(r.also)}</p>` : ''}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Set up BowlID on the Ubuntu demo laptop. Safe to run again: it only fixes what is missing,
+# Set up Bowl ID on the Ubuntu demo laptop. Safe to run again: it only fixes what is missing,
 # and it asks before every command that needs sudo.
 # Usage: ./scripts/setup-ubuntu.sh
 set -u
@@ -33,7 +33,7 @@ offer_sudo() {
   fi
 }
 
-echo "BowlID setup"
+echo "Bowl ID setup"
 echo
 
 # Operating system.
