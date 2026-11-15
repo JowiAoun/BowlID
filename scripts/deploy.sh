@@ -13,6 +13,9 @@ fi
 
 npm run build
 
-# Creating the project fails when it already exists. That is fine.
-npx wrangler pages project create "$PROJECT" --production-branch main >/dev/null 2>&1 || true
+# Create the Pages project the first time. --force keeps it on classic Cloudflare Pages,
+# so the address is <project>.pages.dev.
+if ! npx wrangler pages project list 2>/dev/null | grep -q "│ $PROJECT "; then
+  npx wrangler pages project create "$PROJECT" --production-branch main --force
+fi
 npx wrangler pages deploy dist --project-name "$PROJECT" --branch main --commit-dirty=true
