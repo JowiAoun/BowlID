@@ -6,6 +6,7 @@
 import { Lane } from './game/lane3d.js';
 import { throwFromSwing } from './game/throw.js';
 import { audio } from './game/audio.js';
+import { speech } from './game/speech.js';
 import { SwingRecorder } from './motion/recorder.js';
 import { makeSignature, checkQuality } from './motion/signal.js';
 import { MATCH_CONFIG, buildProfile, identify, verifyClaim, collision, traits } from './motion/matcher.js';
@@ -187,6 +188,7 @@ function ensureLane() {
   if (lane) return;
   lane = new Lane(laneEl, { cast: true, sign: ID.sign });
   lane.onHit = (speed) => audio.crash(speed);
+  speech.init(lane, document.querySelector('.stage .hud'));
   lane.setAim(state.aim);
   window.bowlid.lane = lane;
 }
@@ -245,6 +247,7 @@ async function openChallenge(flow, sample = null, as = null) {
   hideReport();
   drawSlots();
   hint();
+  speech.waiting(1500);
   track('challenge_opened', { flow, input: sample ? 'synthetic' : srcKind() });
   if (sample) {
     await wait(1100);
@@ -262,6 +265,7 @@ function closeChallenge() {
   if (lane) { lane.reset(); lane.setActive(false); }
   audio.roll(0);
   audio.setMusic('off');
+  speech.clear();
   recorder.cancel();
   state.busy = false;
   state.charge = null;
@@ -730,11 +734,14 @@ async function bowl(thrown, src, swing) {
   showPower(thrown.power);
   audio.thud();
   audio.setMusic(false);
+  speech.rolling();
   const pins = await lane.play(thrown);
   if (state.phase !== 'challenge') return;
   showBanner(pins);
   lane.react(pins.strike ? 'strike' : pins.gutter ? 'gutter' : 'miss');
   if (pins.strike) audio.cheer(); else if (pins.gutter) audio.aww();
+  // A login throw gets its verdict next, so the robots save their opinion for that.
+  speech.pins(pins, state.flow !== 'login' || !swing);
   if (!swing) {
     setStatus(NO_SWING);
     settle();
@@ -826,6 +833,7 @@ function afterEnroll(sig, pins, src, rec) {
   state.login.over = true;
   state.session = { account, report, created: true, fresh: 0 };
   audio.chime();
+  speech.welcome();
   showReport(report);
   lane.reset();
   hideBanner();
@@ -898,6 +906,7 @@ function afterLogin(sig, pins, src, rec) {
     });
     state.session = { account: claim, report, created: false, fresh };
     audio.chime();
+    speech.verdict(report.outcome, final, pins, res.crisis);
     showReport(report);
     state.autoOpen = setTimeout(enter, 7000);
     settleQuietly();
@@ -908,6 +917,7 @@ function afterLogin(sig, pins, src, rec) {
     L.finished = true;
     recordAttempt();
   }
+  speech.verdict(report.outcome, final, pins);
   showReport(report);
   settle(1200);
 }

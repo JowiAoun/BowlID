@@ -1,4 +1,6 @@
-// Every sound is made here with Web Audio. There are no sound files.
+// The ball, the pins and the clicks are made here with Web Audio.
+// Voices, the robot crowd and the music are recorded files in public/audio.
+// If a file fails to load, the made-up version of that sound plays in its place.
 // Nothing plays until start() is called from a click or a button press.
 
 let ctx = null;
@@ -13,8 +15,48 @@ let nextBar = 0;
 let room = null;
 let nextClatter = 0;
 let bar = 0;
+let tune = true;
 
 const midi = (n) => 440 * 2 ** ((n - 69) / 12);
+
+// Recorded sounds, by file name without the extension.
+const SAMPLE_KEYS = [
+  'ann_strike', 'ann_gutter', 'ann_pins', 'ann_approved', 'ann_denied', 'ann_strike_denied', 'ann_gutter_approved', 'ann_again',
+  'u7_wait', 'u7_roll', 'u7_strike', 'u7_gutter', 'u7_denied', 'u7_approved',
+  'chip_wait', 'chip_strike', 'chip_gutter', 'chip_denied', 'chip_approved', 'chip_crisis',
+  'sfx_cheer', 'sfx_groan', 'sfx_murmur', 'music',
+];
+const samples = {};
+
+function startLoop(key, gain) {
+  const src = ctx.createBufferSource();
+  src.buffer = samples[key];
+  src.loop = true;
+  const g = ctx.createGain();
+  g.gain.value = gain;
+  // Loops go through the music volume, so they duck and stop with it.
+  src.connect(g).connect(music);
+  src.start();
+}
+
+function loadSamples() {
+  const base = `${import.meta.env.BASE_URL}audio/`;
+  for (const key of SAMPLE_KEYS) {
+    fetch(`${base}${key}.mp3`)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('missing'))))
+      .then((data) => ctx.decodeAudioData(data))
+      .then((buf) => {
+        samples[key] = buf;
+        if (key === 'music') {
+          // The recorded music takes over from the made-up tune.
+          tune = false;
+          startLoop('music', 2);
+        }
+        if (key === 'sfx_murmur') startLoop('sfx_murmur', 0.9);
+      })
+      .catch(() => { /* The made-up sound stays in use. */ });
+  }
+}
 
 function noise(dur, when, { type = 'bandpass', freq = 1500, q = 1, gain = 0.3, to = null, out = master } = {}) {
   const src = ctx.createBufferSource();
@@ -109,7 +151,7 @@ function clatter(when) {
 
 function pump() {
   if (!ctx) return;
-  while (nextBar < ctx.currentTime + 0.4) {
+  while (tune && nextBar < ctx.currentTime + 0.4) {
     scheduleBar(nextBar, bar++);
     nextBar += BEAT * 4;
   }
@@ -173,6 +215,19 @@ export const audio = {
     nextBar = ctx.currentTime + 0.15;
     timer = setInterval(pump, 120);
     pump();
+    loadSamples();
+  },
+
+  // Plays one recorded sound. Returns its length in seconds, or 0 when it is not loaded.
+  say(key, gain = 1) {
+    if (!ctx || !samples[key]) return 0;
+    const src = ctx.createBufferSource();
+    src.buffer = samples[key];
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g).connect(master);
+    src.start();
+    return samples[key].duration;
   },
 
   setMuted(m) {
@@ -223,6 +278,7 @@ export const audio = {
   // A strike: the seats applaud.
   cheer() {
     if (!ctx) return;
+    if (this.say('sfx_cheer', 0.55)) return;
     const t = ctx.currentTime;
     // Applause from the seats, a few pleased beeps, and a little fanfare.
     for (let i = 0; i < 34; i++) clap(t + 0.1 + Math.random() * 1.7, 0.07 + Math.random() * 0.08);
@@ -238,6 +294,7 @@ export const audio = {
   // A gutter ball. It should be a little funny.
   aww() {
     if (!ctx) return;
+    if (this.say('sfx_groan', 0.55)) return;
     const t = ctx.currentTime;
     // A slide whistle on the way down, then two sorry notes.
     tone(1150, t, 0.7, { type: 'sine', gain: 0.22, to: 260, attack: 0.03 });
