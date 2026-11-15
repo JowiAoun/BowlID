@@ -207,6 +207,14 @@ function header() {
   sim.textContent = kind === 'synthetic' ? 'Simulated: sample customer, formula swing' : 'Simulated swing: pointer, not a Wii Remote';
 }
 
+// While the challenge is open the page behind it does not scroll. The width its scrollbar took
+// is padded back, so the page does not jump sideways.
+function lockPage(on) {
+  const bar = on ? window.innerWidth - document.documentElement.clientWidth : 0;
+  document.body.style.paddingRight = bar > 0 ? `${bar}px` : '';
+  document.body.classList.toggle('challenge', on);
+}
+
 // `sample` is the sample customer whose formula swing is replayed, and `as` the sample
 // customer whose account that swing is tried on.
 async function openChallenge(flow, sample = null, as = null) {
@@ -233,8 +241,8 @@ async function openChallenge(flow, sample = null, as = null) {
   state.enroll = flow === 'enroll' ? { throws: [], restarts: 0 } : null;
   state.login = newLogin();
   state.busy = false;
+  lockPage(true);
   $('veil').hidden = false;
-  document.body.classList.add('challenge');
   ensureLane();
   lane.reset();
   lane.setActive(true);
@@ -258,7 +266,7 @@ async function openChallenge(flow, sample = null, as = null) {
 function closeChallenge() {
   clearTimeout(state.autoOpen);
   $('veil').hidden = true;
-  document.body.classList.remove('challenge');
+  lockPage(false);
   $('info').hidden = true;
   hideReport();
   hideBanner();
@@ -676,9 +684,10 @@ function showReport(r) {
     actions = '<button class="verify" type="button" data-act="enter" data-primary>Open my account</button>';
   } else if (r.final) {
     actions = `<button class="verify" type="button" data-act="leave" data-primary>Close</button>
-      <span>or bowl again.</span>`;
+      <button class="link" type="button" data-act="again">or bowl again</button>`;
   } else {
-    actions = `<span>Bowl again. Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
+    actions = `<button class="verify" type="button" data-act="again" data-primary>Bowl again</button>
+      <span>Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
   }
   el.className = `report ${cls}`;
   el.innerHTML = `
@@ -691,12 +700,24 @@ function showReport(r) {
     ${reportBody(r)}
     <div class="actions">${actions}</div>`;
   el.hidden = false;
+  // A new report starts at its top, wherever the last one was scrolled to.
+  el.scrollTop = 0;
   lane?.setPanel(true);
   drawReportGraph(el, r);
   setStatus(r.title, cls === 'ok' ? 'ok' : cls === 'bad' ? '' : 'plain');
   hint();
 }
 function hideReport() { $('report').hidden = true; lane?.setPanel(false); }
+
+// The report covers most of the lane. This puts it away so there is a lane to bowl on.
+function again() {
+  if (state.phase !== 'challenge' || state.login.over) return;
+  hideBanner();
+  hideReport();
+  $('info').hidden = true;
+  setStatus(state.flow === 'login' ? `Bowl ${state.username}'s password.` : '', 'plain');
+  hint();
+}
 
 /* Throws */
 
@@ -1068,6 +1089,7 @@ function signOut() {
 const actions = {
   enter,
   leave: cancel,
+  again,
   sample: (el) => openChallenge('login', el.dataset.swing, el.dataset.as),
   practice: () => openChallenge('practice'),
   export: () => {
