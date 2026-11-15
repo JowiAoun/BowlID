@@ -323,7 +323,7 @@ async function onSwing(swing) {
   $('export').hidden = false;
   if (state.screen === 'enroll') afterEnroll(sig, pins);
   else if (state.screen === 'verify') afterVerify(sig, pins);
-  else flash(`${pinsLabel(pins)}. Nice. It proves nothing about who you are.`);
+  else flash(`${pinsLabel(pins)}. ${pins.gutter ? 'Still, it' : 'Nice. It'} proves nothing about who you are.`);
   setTimeout(() => { lane.reset(); lane.setAim(state.aim); hideBanner(); state.busy = false; }, 1700);
 }
 
