@@ -677,8 +677,12 @@ function drawReportGraph(root, r) {
 
 function showReport(r) {
   state.report = r;
+  clearTimeout(state.reportTimer);
   const el = $('report');
   const cls = VERDICT_CLASS[r.outcome];
+  const passed = r.outcome === 'recognized' || r.outcome === 'created';
+  // "Bowl again" is a small card in the corner, so the lane stays in view for the next throw.
+  const compact = !passed && !r.final;
   let actions = '';
   if (r.outcome === 'recognized' || r.outcome === 'created') {
     actions = '<button class="verify" type="button" data-act="enter" data-primary>Open my account</button>';
@@ -686,10 +690,9 @@ function showReport(r) {
     actions = `<button class="verify" type="button" data-act="leave" data-primary>Close</button>
       <button class="link" type="button" data-act="again">or bowl again</button>`;
   } else {
-    actions = `<button class="verify" type="button" data-act="again" data-primary>Bowl again</button>
-      <span>Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
+    actions = `<span>${r.score == null ? '' : `Score ${r.score} of 100. `}Bowl again. Attempt ${r.bowls} of ${MATCH_CONFIG.maxLoginBowls}.</span>`;
   }
-  el.className = `report ${cls}`;
+  el.className = `report ${cls}${compact ? ' compact' : ''}`;
   el.innerHTML = `
     <div class="head">
       <small>BowlID biometric report</small>
@@ -702,12 +705,13 @@ function showReport(r) {
   el.hidden = false;
   // A new report starts at its top, wherever the last one was scrolled to.
   el.scrollTop = 0;
-  lane?.setPanel(true);
-  drawReportGraph(el, r);
+  lane?.setPanel(!compact);
+  if (compact) state.reportTimer = setTimeout(hideReport, 3000);
+  else drawReportGraph(el, r);
   setStatus(r.title, cls === 'ok' ? 'ok' : cls === 'bad' ? '' : 'plain');
   hint();
 }
-function hideReport() { $('report').hidden = true; lane?.setPanel(false); }
+function hideReport() { clearTimeout(state.reportTimer); $('report').hidden = true; lane?.setPanel(false); }
 
 // The report covers most of the lane. This puts it away so there is a lane to bowl on.
 function again() {
@@ -858,7 +862,8 @@ function afterEnroll(sig, pins, src, rec) {
   showReport(report);
   lane.reset();
   hideBanner();
-  state.autoOpen = setTimeout(enter, 7000);
+  // The account opens by itself. Nobody has to press the button.
+  state.autoOpen = setTimeout(enter, 3000);
 }
 
 function afterLogin(sig, pins, src, rec) {
@@ -929,7 +934,8 @@ function afterLogin(sig, pins, src, rec) {
     audio.chime();
     speech.verdict(report.outcome, final, pins, res.crisis);
     showReport(report);
-    state.autoOpen = setTimeout(enter, 7000);
+    // The account opens by itself. Nobody has to press the button.
+  state.autoOpen = setTimeout(enter, 3000);
     settleQuietly();
     return;
   }
