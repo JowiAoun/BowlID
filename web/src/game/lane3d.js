@@ -1,22 +1,39 @@
 // Draws the bowling hall with Three.js and plays a throw from the physics simulation.
+// The hall is a small retro bowling centre: honey wood, walnut trim, teal and coral.
+// Light and gloss are painted into the textures, so it runs on a modest laptop.
 import * as THREE from 'three';
 import { LANE, createWorld, step, result, pinLayout } from './physics.js';
 import { BRAND } from '../brand.js';
-import { Bowler } from './bowler.js';
+import { Bowler, softShadow } from './bowler.js';
 import { Crowd } from './crowd.js';
 
-const SKY = 0xcdeaf8;
-const WARM = 0xfff1d6;
-const BALL = 0x16a06c;
+// The lane is drawn shorter than it is simulated, so the pins are never far away.
+const K = 0.66;
+const Z = (z) => -z * K;
+const PIN_Z = Z(LANE.pinZ);
+const DECK_END = Z(LANE.deckEnd);
+const LEN = -DECK_END + 0.05;
+const MID = -LEN / 2;
+// Distance from one lane's centre to the next, and how many lanes there are each side of ours.
+const PITCH = LANE.wallX * 2 + 0.44;
+const SIDE = 3;
+const HALL_W = PITCH * (SIDE * 2 + 1);
+const CEIL = 2.8;
+const MASK_Y = 0.66;
+const MASK_Z = PIN_Z - 0.28;
+const PIT_Z = DECK_END - 0.3;
+const APPROACH = 3.6;
+const BACK_Z = 8.6;
+const PIN_SCALE = 1.16;
 // Where the bowler stands, behind the foul line.
-const STAND_Z = -0.32;
+const STAND = 0.42;
 
-// Lane z runs away from the player. Three.js looks down negative z, so flip it.
-const Z = (z) => -z;
-const LEN = LANE.deckEnd + 1.2;
-const MID = Z(LEN / 2 - 1.2);
-// Distance from one lane's centre to the next.
-const PITCH = LANE.wallX * 2 + 0.5;
+const C = {
+  cream: '#f4e8d0', teal: '#2c8b88', tealDeep: '#1f6f6d', coral: '#e8573f', mustard: '#e9b949',
+  walnut: '#5b3a22', honey: '#e3b876',
+};
+const hex = (s) => parseInt(s.slice(1), 16);
+const FONT = '"Fredoka Variable", "Trebuchet MS", Arial, sans-serif';
 
 function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas');
@@ -25,66 +42,336 @@ function canvasTexture(w, h, draw) {
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
+  t.anisotropy = 8;
   return t;
 }
 
+// A repeatable random number, so the wood looks the same every time.
+function rng(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return s / 2147483647;
+  };
+}
+
+function paintWood(g, w, h, boards, seed) {
+  const r = rng(seed);
+  g.fillStyle = C.honey;
+  g.fillRect(0, 0, w, h);
+  const bw = w / boards;
+  for (let i = 0; i < boards; i++) {
+    const tone = r();
+    g.fillStyle = tone > 0.5 ? `rgba(255,236,190,${(tone - 0.5) * 0.36})` : `rgba(140,84,30,${(0.5 - tone) * 0.3})`;
+    g.fillRect(i * bw, 0, bw, h);
+    g.fillStyle = 'rgba(96,56,20,0.2)';
+    g.fillRect(i * bw, 0, 1, h);
+  }
+  // Grain: long faint streaks along the boards.
+  for (let i = 0; i < 520; i++) {
+    const x = r() * w;
+    const y = r() * h;
+    const len = 40 + r() * 260;
+    g.fillStyle = r() > 0.5 ? 'rgba(120,70,24,0.07)' : 'rgba(255,240,205,0.08)';
+    g.fillRect(x, y, 1 + r(), len);
+  }
+}
+
+// The lane: boards, arrows, dots, and the shine of the pit lights painted on the far end.
 function laneTexture() {
   return canvasTexture(256, 2048, (g, w, h) => {
-    g.fillStyle = '#ecd09a';
-    g.fillRect(0, 0, w, h);
-    // Boards run the length of the lane.
-    for (let i = 0; i < 20; i++) {
-      g.fillStyle = i % 2 ? 'rgba(150,100,40,0.10)' : 'rgba(255,250,225,0.16)';
-      g.fillRect((i * w) / 20, 0, w / 20 - 1, h);
-    }
-    // Aiming arrows and the dots near the foul line.
-    g.fillStyle = 'rgba(90,50,15,0.6)';
+    paintWood(g, w, h, 13, 7);
+    g.fillStyle = 'rgba(92,52,18,0.72)';
     for (let i = -3; i <= 3; i++) {
-      const x = w / 2 + i * 30;
-      const y = h - 520 + Math.abs(i) * 34;
+      const x = w / 2 + i * 31;
+      const y = h * 0.72 + Math.abs(i) * 36;
       g.beginPath();
-      g.moveTo(x, y - 26);
-      g.lineTo(x + 7, y);
-      g.lineTo(x - 7, y);
+      g.moveTo(x, y - 40);
+      g.lineTo(x + 8, y);
+      g.lineTo(x - 8, y);
       g.fill();
       g.beginPath();
-      g.arc(x, h - 150, 3.5, 0, Math.PI * 2);
+      g.arc(x, h * 0.93, 3.5, 0, Math.PI * 2);
       g.fill();
     }
-    g.fillStyle = '#2a2a2a';
-    g.fillRect(0, h - 14, w, 5);
+    // The pin deck is a paler wood.
+    const deck = h * (1 - (-PIN_Z - 0.35) / LEN);
+    g.fillStyle = 'rgba(255,244,214,0.3)';
+    g.fillRect(0, 0, w, deck);
+    // Gloss: bright near the pins, a long soft streak down the middle.
+    const shine = g.createLinearGradient(0, 0, 0, h * 0.4);
+    shine.addColorStop(0, 'rgba(255,250,228,0.5)');
+    shine.addColorStop(0.35, 'rgba(255,246,214,0.16)');
+    shine.addColorStop(1, 'rgba(255,246,214,0)');
+    g.fillStyle = shine;
+    g.fillRect(0, 0, w, h * 0.4);
+    const streak = g.createLinearGradient(0, 0, w, 0);
+    streak.addColorStop(0.2, 'rgba(255,255,255,0)');
+    streak.addColorStop(0.5, 'rgba(255,248,220,0.1)');
+    streak.addColorStop(0.8, 'rgba(255,255,255,0)');
+    g.fillStyle = streak;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#3a2413';
+    g.fillRect(0, h - 10, w, 5);
   });
 }
 
-function signTexture(sign) {
-  return canvasTexture(1024, 256, (g, w, h) => {
-    if (sign) {
-      g.fillStyle = '#ffffff';
-      g.fillRect(0, 0, w, h);
-      g.fillStyle = sign.color;
-      g.fillRect(12, 12, w - 24, h - 24);
-      g.fillStyle = '#ffffff';
-      g.textAlign = 'center';
-      g.font = '700 118px "Fredoka Variable", "Trebuchet MS", Arial, sans-serif';
-      g.fillText(sign.name, w / 2, 140, w - 90);
-      g.font = '600 36px "Fredoka Variable", "Trebuchet MS", Arial, sans-serif';
-      g.fillText(sign.tagline, w / 2, 206, w - 90);
-      return;
+function approachTexture() {
+  const t = canvasTexture(256, 512, (g, w, h) => {
+    paintWood(g, w, h, 13, 19);
+    g.fillStyle = 'rgba(92,52,18,0.6)';
+    for (let i = -3; i <= 3; i++) {
+      for (const y of [h * 0.12, h * 0.62]) {
+        g.beginPath();
+        g.arc(w / 2 + i * 31, y, 3.5, 0, Math.PI * 2);
+        g.fill();
+      }
     }
-    g.fillStyle = '#0f3d2e';
+    // A little darker towards the seats, where the lane lights do not reach.
+    const fade = g.createLinearGradient(0, 0, 0, h);
+    fade.addColorStop(0, 'rgba(255,246,220,0.14)');
+    fade.addColorStop(1, 'rgba(80,44,14,0.2)');
+    g.fillStyle = fade;
     g.fillRect(0, 0, w, h);
-    g.strokeStyle = '#d9ad5b';
-    g.lineWidth = 8;
-    g.strokeRect(14, 14, w - 28, h - 28);
-    g.fillStyle = '#f4efe4';
+  });
+  t.wrapS = THREE.RepeatWrapping;
+  t.repeat.set(HALL_W / (LANE.halfW * 2), 1);
+  return t;
+}
+
+function carpetTexture() {
+  const t = canvasTexture(128, 128, (g, w, h) => {
+    g.fillStyle = '#245f66';
+    g.fillRect(0, 0, w, h);
+    const r = rng(3);
+    const shapes = [C.coral, C.mustard, '#3f8f93', '#f4e8d0'];
+    for (let i = 0; i < 14; i++) {
+      g.save();
+      g.translate(r() * w, r() * h);
+      g.rotate(r() * 6);
+      g.fillStyle = shapes[i % 4];
+      g.globalAlpha = 0.75;
+      if (i % 3 === 0) g.fillRect(-7, -2, 14, 4);
+      else if (i % 3 === 1) { g.beginPath(); g.moveTo(0, -6); g.lineTo(6, 5); g.lineTo(-6, 5); g.fill(); }
+      else { g.beginPath(); g.arc(0, 0, 3.5, 0, 7); g.fill(); }
+      g.restore();
+    }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(HALL_W / 1.4, (BACK_Z - APPROACH) / 1.4);
+  return t;
+}
+
+// Wooden slats with one round lamp per tile. The lamp's glow is painted on.
+function ceilingTexture() {
+  const t = canvasTexture(256, 256, (g, w, h) => {
+    g.fillStyle = '#9a6a3c';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 16; i++) {
+      g.fillStyle = i % 2 ? '#a87745' : '#b98651';
+      g.fillRect(i * 16, 0, 14, h);
+      g.fillStyle = 'rgba(50,26,8,0.5)';
+      g.fillRect(i * 16 + 14, 0, 2, h);
+    }
+    const glow = g.createRadialGradient(w / 2, h / 2, 6, w / 2, h / 2, 120);
+    glow.addColorStop(0, 'rgba(255,240,196,0.95)');
+    glow.addColorStop(0.35, 'rgba(255,226,160,0.4)');
+    glow.addColorStop(1, 'rgba(255,220,150,0)');
+    g.fillStyle = glow;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = '#fff8e2';
+    g.beginPath();
+    g.arc(w / 2, h / 2, 24, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = '#d9b56c';
+    g.lineWidth = 4;
+    g.stroke();
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(SIDE * 2 + 1, 6);
+  return t;
+}
+
+function starburst(g, x, y, r, color) {
+  g.save();
+  g.translate(x, y);
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.lineWidth = r * 0.09;
+  g.lineCap = 'round';
+  for (let i = 0; i < 8; i++) {
+    const len = i % 2 ? r * 0.6 : r;
+    g.rotate(Math.PI / 4);
+    g.beginPath();
+    g.moveTo(0, -len * 0.25);
+    g.lineTo(0, -len);
+    g.stroke();
+    if (i % 2 === 0) { g.beginPath(); g.arc(0, -len, r * 0.1, 0, 7); g.fill(); }
+  }
+  g.beginPath();
+  g.arc(0, 0, r * 0.14, 0, 7);
+  g.fill();
+  g.restore();
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+// The wall above the pins, for every lane at once. Drawn in metres, from the ceiling down.
+function endWallTexture(sign) {
+  const H = CEIL - MASK_Y;
+  return canvasTexture(4096, 512, (g, w, h) => {
+    g.scale(w / HALL_W, h / H);
+    const maskTop = H - 0.86;
+    // Upper wall: cream, with a walnut cornice and two stripes.
+    const wall = g.createLinearGradient(0, 0, 0, maskTop);
+    wall.addColorStop(0, '#e2cfa8');
+    wall.addColorStop(0.35, C.cream);
+    wall.addColorStop(1, '#efe0c2');
+    g.fillStyle = wall;
+    g.fillRect(0, 0, HALL_W, maskTop);
+    g.fillStyle = C.walnut;
+    g.fillRect(0, 0, HALL_W, 0.07);
+    g.fillStyle = C.coral;
+    g.fillRect(0, maskTop - 0.4, HALL_W, 0.075);
+    g.fillStyle = C.teal;
+    g.fillRect(0, maskTop - 0.29, HALL_W, 0.03);
+    // A row of small diamonds under the cornice.
+    g.fillStyle = C.mustard;
+    for (let x = 0.25; x < HALL_W; x += 0.5) {
+      g.beginPath();
+      g.moveTo(x, 0.26);
+      g.lineTo(x + 0.06, 0.36);
+      g.lineTo(x, 0.46);
+      g.lineTo(x - 0.06, 0.36);
+      g.fill();
+    }
+    for (let n = 0; n < SIDE * 2 + 1; n++) {
+      const x = n * PITCH;
+      const ours = n === SIDE;
+      // One panel per lane.
+      g.fillStyle = C.tealDeep;
+      g.fillRect(x, maskTop, PITCH, 0.86);
+      const panel = g.createLinearGradient(0, maskTop, 0, H);
+      panel.addColorStop(0, '#39a09b');
+      panel.addColorStop(1, C.teal);
+      g.fillStyle = panel;
+      roundRect(g, x + 0.06, maskTop + 0.06, PITCH - 0.12, 0.7, 0.06);
+      g.fill();
+      g.strokeStyle = C.cream;
+      g.lineWidth = 0.018;
+      g.stroke();
+      // A cream plaque with the lane number, or the name over our lane.
+      const pw = ours ? 1.5 : 0.62;
+      g.fillStyle = C.cream;
+      roundRect(g, x + PITCH / 2 - pw / 2, maskTop + 0.17, pw, 0.48, 0.24);
+      g.fill();
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      if (ours) {
+        g.fillStyle = sign ? sign.color : C.tealDeep;
+        g.font = `700 0.3px ${FONT}`;
+        g.fillText(sign ? sign.name : BRAND.name, x + PITCH / 2, maskTop + 0.385, pw - 0.3);
+        g.fillStyle = C.coral;
+        g.font = `600 0.07px ${FONT}`;
+        g.fillText('LANE 67', x + PITCH / 2, maskTop + 0.57);
+      } else {
+        g.fillStyle = C.coral;
+        g.font = `700 0.34px ${FONT}`;
+        g.fillText(String(64 + n), x + PITCH / 2, maskTop + 0.425);
+        starburst(g, x + 0.36, maskTop + 0.41, 0.15, C.mustard);
+        starburst(g, x + PITCH - 0.36, maskTop + 0.41, 0.15, C.mustard);
+      }
+      // Walnut trim and the lamp that lights the pins.
+      g.fillStyle = C.walnut;
+      g.fillRect(x, H - 0.075, PITCH, 0.045);
+      g.fillStyle = '#fff3cf';
+      g.fillRect(x + 0.24, H - 0.03, PITCH - 0.48, 0.03);
+      g.fillStyle = C.walnut;
+      g.fillRect(x - 0.02, maskTop, 0.04, 0.86);
+    }
+  });
+}
+
+// The wall behind the seats.
+function backWallTexture() {
+  return canvasTexture(2048, 512, (g, w, h) => {
+    g.scale(w / HALL_W, h / CEIL);
+    g.fillStyle = C.cream;
+    g.fillRect(0, 0, HALL_W, CEIL);
+    g.fillStyle = C.teal;
+    g.fillRect(0, CEIL - 1.05, HALL_W, 1.05);
+    g.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let x = 0; x < HALL_W; x += 0.22) g.fillRect(x, CEIL - 1.05, 0.015, 1.05);
+    g.fillStyle = C.walnut;
+    g.fillRect(0, CEIL - 1.1, HALL_W, 0.07);
+    g.fillStyle = C.coral;
+    g.fillRect(0, 0.42, HALL_W, 0.09);
+    g.fillStyle = C.walnut;
+    g.fillRect(0, 0, HALL_W, 0.07);
     g.textAlign = 'center';
-    g.font = '600 112px Georgia, "Times New Roman", serif';
-    // The last argument squeezes a long name to fit the sign.
-    g.fillText(BRAND.name.toUpperCase(), w / 2, 138, w - 90);
-    g.fillStyle = '#d9ad5b';
-    g.font = '34px Georgia, serif';
-    g.fillText(BRAND.tagline.toUpperCase(), w / 2, 204, w - 90);
+    g.textBaseline = 'middle';
+    g.fillStyle = C.tealDeep;
+    g.font = `700 0.34px ${FONT}`;
+    g.fillText('BOWL LIKE YOURSELF', HALL_W / 2, 1.08);
+    starburst(g, HALL_W / 2 - 2.4, 1.08, 0.3, C.mustard);
+    starburst(g, HALL_W / 2 + 2.4, 1.08, 0.3, C.mustard);
+    starburst(g, HALL_W / 2 - 4.6, 1.0, 0.2, C.coral);
+    starburst(g, HALL_W / 2 + 4.6, 1.0, 0.2, C.coral);
+  });
+}
+
+function sideWallTexture() {
+  return canvasTexture(64, 256, (g, w, h) => {
+    const s = h / CEIL;
+    g.fillStyle = '#eadbb9';
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = C.walnut;
+    g.fillRect(0, 0, w, 0.07 * s);
+    g.fillStyle = C.coral;
+    g.fillRect(0, 0.95 * s, w, 0.075 * s);
+    g.fillStyle = C.tealDeep;
+    g.fillRect(0, (CEIL - 1.0) * s, w, 1.0 * s);
+    g.fillStyle = C.walnut;
+    g.fillRect(0, (CEIL - 1.04) * s, w, 0.06 * s);
+  });
+}
+
+// The dark space the pins are swept into, with a little light spilling in at the bottom.
+function pitTexture() {
+  return canvasTexture(8, 64, (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, '#120c08');
+    grad.addColorStop(0.6, '#1e1410');
+    grad.addColorStop(1, '#4a3322');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  });
+}
+
+// A polished ball: a deep colour with paler swirls through it.
+function ballTexture(base, swirl, seed) {
+  return canvasTexture(256, 128, (g, w, h) => {
+    g.fillStyle = base;
+    g.fillRect(0, 0, w, h);
+    const r = rng(seed);
+    for (let i = 0; i < 26; i++) {
+      g.strokeStyle = i % 3 ? swirl : 'rgba(0,0,0,0.25)';
+      g.globalAlpha = 0.12 + r() * 0.28;
+      g.lineWidth = 2 + r() * 9;
+      const y = r() * h;
+      g.beginPath();
+      g.moveTo(-20, y);
+      g.bezierCurveTo(w * 0.3, y + (r() - 0.5) * 90, w * 0.6, y + (r() - 0.5) * 90, w + 20, y);
+      g.stroke();
+    }
   });
 }
 
@@ -92,19 +379,19 @@ function signTexture(sign) {
 function aimTexture() {
   const t = canvasTexture(64, 128, (g, w) => {
     g.strokeStyle = '#ffffff';
-    g.lineWidth = 12;
+    g.lineWidth = 9;
     g.lineCap = 'round';
     g.lineJoin = 'round';
     for (const y of [50, 114]) {
       g.beginPath();
-      g.moveTo(10, y);
-      g.lineTo(w / 2, y - 34);
-      g.lineTo(w - 10, y);
+      g.moveTo(14, y);
+      g.lineTo(w / 2, y - 30);
+      g.lineTo(w - 14, y);
       g.stroke();
     }
   });
   t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(1, 5);
+  t.repeat.set(1, 6);
   return t;
 }
 
@@ -114,22 +401,50 @@ const PIN_BODY = new THREE.LatheGeometry(
     [0.0, 0.0], [0.028, 0.0], [0.045, 0.05], [0.06, 0.115], [0.055, 0.18],
     [0.032, 0.25], [0.023, 0.29], [0.03, 0.335], [0.03, 0.36], [0.018, 0.378], [0.0, 0.381],
   ].map(([x, y]) => new THREE.Vector2(x, y)),
-  16,
+  18,
 );
-const PIN_BAND = new THREE.CylinderGeometry(0.0265, 0.0245, 0.022, 16, 1, true);
-const PIN_WHITE = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 110, specular: 0x999999 });
-const PIN_RED = new THREE.MeshBasicMaterial({ color: 0xe0352b });
+// Two red bands round the neck.
+const PIN_BAND = new THREE.CylinderGeometry(0.0262, 0.0242, 0.014, 16, 1, true);
+const PIN_WHITE = new THREE.MeshPhongMaterial({ color: 0xfffdf6, shininess: 120, specular: 0xaaaaaa, emissive: 0x2a2620 });
+const PIN_RED = new THREE.MeshBasicMaterial({ color: 0xdc3a2c });
+const BAND_Y = [0.279, 0.299];
 
 function pinMesh() {
-  const band = new THREE.Mesh(PIN_BAND, PIN_RED);
-  band.position.y = 0.288;
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(PIN_BODY, PIN_WHITE), band);
+  group.add(new THREE.Mesh(PIN_BODY, PIN_WHITE));
+  for (const y of BAND_Y) {
+    const band = new THREE.Mesh(PIN_BAND, PIN_RED);
+    band.position.y = y;
+    group.add(band);
+  }
+  group.scale.setScalar(PIN_SCALE);
   return group;
 }
 
+// Many copies of one shape in one draw call. Each entry of `list` places one copy.
+function copies(geo, material, list) {
+  const mesh = new THREE.InstancedMesh(geo, material, list.length);
+  const o = new THREE.Object3D();
+  list.forEach((place, i) => {
+    o.position.set(0, 0, 0);
+    o.rotation.set(0, 0, 0);
+    o.scale.set(1, 1, 1);
+    place(o);
+    o.updateMatrix();
+    mesh.setMatrixAt(i, o.matrix);
+  });
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+function flat(w, d, material) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
+  m.rotation.x = -Math.PI / 2;
+  return m;
+}
+
 export class Lane {
-  // `cast` adds the bowler, the robots and the third-person camera. `sign` is { name, tagline, color }.
+  // `cast` adds the bowler, the robots and the seats. `sign` is { name, tagline, color }.
   constructor(container, { cast = false, sign = null } = {}) {
     this.container = container;
     this.cast = cast;
@@ -140,6 +455,9 @@ export class Lane {
     this.cut = true;
     this.look = new THREE.Vector3();
     this.hand = new THREE.Vector3();
+    this.view = { x: 0, y: 1.4, z: 5, lx: 0, ly: 0.4, lz: -7, fov: 28 };
+    this.fov = 28;
+    this.wide = 1;
     this.onHit = null;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
     this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -147,15 +465,16 @@ export class Lane {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    const sky = cast ? WARM : SKY;
-    this.scene.background = new THREE.Color(sky);
-    this.scene.fog = new THREE.Fog(sky, 15, 34);
-    this.camera = new THREE.PerspectiveCamera(38, 1, 0.1, 70);
+    this.scene.background = new THREE.Color(0x2a1c12);
+    this.camera = new THREE.PerspectiveCamera(28, 1, 0.1, 60);
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, cast ? 0xf2d9b0 : 0xbfd9e8, 1.9));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    sun.position.set(-2, 6, 4);
-    this.scene.add(sun);
+    // Warm light from the ceiling lamps, and a softer fill from the seats so faces and pins read.
+    this.scene.add(new THREE.HemisphereLight(0xfff4e0, 0xc9a070, 1.75));
+    const key = new THREE.DirectionalLight(0xfff0d6, 1.5);
+    key.position.set(-2.5, 6, 5);
+    const fill = new THREE.DirectionalLight(0xffe2c0, 0.45);
+    fill.position.set(3, 2.5, -6);
+    this.scene.add(key, fill);
 
     // Everything in here is drawn a second time upside down, as the reflection in the polished lane.
     this.mirror = new THREE.Group();
@@ -193,170 +512,220 @@ export class Lane {
   }
 
   build() {
+    const scene = this.scene;
     const wood = laneTexture();
     const laneGeo = new THREE.PlaneGeometry(LANE.halfW * 2, LEN);
-    // Slightly see-through, so the reflection under it shows.
+    laneGeo.rotateX(-Math.PI / 2);
+    // Our lane is slightly see-through, so the reflection under it shows.
     const lane = new THREE.Mesh(laneGeo, new THREE.MeshPhongMaterial({
-      map: wood, shininess: 140, specular: 0x777777, transparent: true, opacity: 0.8,
+      map: wood, shininess: 150, specular: 0x8a7a66, transparent: true, opacity: 0.84,
     }));
-    lane.rotation.x = -Math.PI / 2;
     lane.position.set(0, 0, MID);
     lane.renderOrder = 2;
-    this.scene.add(lane);
-    const under = new THREE.Mesh(laneGeo, new THREE.MeshBasicMaterial({ color: 0xe2c48c }));
-    under.rotation.x = -Math.PI / 2;
-    under.position.set(0, -0.45, MID);
-    this.scene.add(under);
+    const under = flat(LANE.halfW * 2, LEN, new THREE.MeshBasicMaterial({ color: 0xf0c888 }));
+    under.position.set(0, -0.6, MID);
+    scene.add(lane, under);
 
-    const gutterMat = new THREE.MeshPhongMaterial({ color: 0x8fa9b8, shininess: 60 });
-    const railMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 });
-    const stripeMat = new THREE.MeshBasicMaterial({ color: 0x2f8fd8 });
-    const sideLane = new THREE.MeshPhongMaterial({ map: wood, shininess: 120, specular: 0x666666 });
-    for (const s of [-1, 1]) {
-      const gutter = new THREE.Mesh(new THREE.BoxGeometry(LANE.gutterW, 0.04, LEN), gutterMat);
-      gutter.position.set(s * (LANE.halfW + LANE.gutterW / 2), -0.06, MID);
-      // The ball return rail between two lanes, white with a blue stripe.
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.16, LEN), railMat);
-      rail.position.set(s * (LANE.wallX + 0.25), 0.02, MID);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.165, LEN), stripeMat);
-      stripe.position.set(s * (LANE.wallX + 0.25), 0.021, MID);
-      this.scene.add(gutter, rail, stripe);
+    const others = [];
+    for (let n = -SIDE; n <= SIDE; n++) if (n) others.push(n);
+    scene.add(copies(laneGeo, new THREE.MeshPhongMaterial({ map: wood, shininess: 120, specular: 0x66594a }),
+      others.map((n) => (o) => o.position.set(n * PITCH, 0, MID))));
 
-      // The lanes next door, with their own pins, so the hall feels like a hall.
-      for (const n of [1, 2]) {
-        const x = s * PITCH * n;
-        const other = new THREE.Mesh(laneGeo, sideLane);
-        other.rotation.x = -Math.PI / 2;
-        other.position.set(x, 0, MID);
-        const g1 = new THREE.Mesh(new THREE.BoxGeometry(LANE.gutterW, 0.04, LEN), gutterMat);
-        g1.position.set(x - LANE.halfW - LANE.gutterW / 2, -0.06, MID);
-        const g2 = g1.clone();
-        g2.position.x = x + LANE.halfW + LANE.gutterW / 2;
-        const r2 = rail.clone();
-        r2.position.x = x + s * (LANE.wallX + 0.25);
-        const s2 = stripe.clone();
-        s2.position.x = r2.position.x;
-        this.scene.add(other, g1, g2, r2, s2);
-        for (const p of pinLayout()) {
-          const m = pinMesh();
-          m.position.set(x + p.x, 0, Z(p.z));
-          this.scene.add(m);
-        }
+    // Gutters: dark half-pipes either side of every lane.
+    const gutterGeo = new THREE.CylinderGeometry(LANE.gutterW / 2, LANE.gutterW / 2, LEN, 10, 1, true, -Math.PI / 2, Math.PI);
+    const gutterMat = new THREE.MeshPhongMaterial({ color: 0x3a2c25, shininess: 70, specular: 0x6b5a4c, side: THREE.DoubleSide });
+    const gutters = [];
+    const caps = [];
+    for (let n = -SIDE; n <= SIDE; n++) {
+      for (const s of [-1, 1]) {
+        gutters.push((o) => {
+          o.position.set(n * PITCH + s * (LANE.halfW + LANE.gutterW / 2), 0, MID);
+          o.rotation.x = Math.PI / 2;
+          o.scale.z = 0.62;
+        });
       }
     }
+    for (let n = -SIDE - 1; n <= SIDE; n++) caps.push(n);
+    scene.add(copies(gutterGeo, gutterMat, gutters));
+    // Under the gutters, so nothing shows through at the ends.
+    const bedMat = new THREE.MeshBasicMaterial({ color: 0x241913 });
+    const bedW = HALL_W / 2 - LANE.halfW;
+    for (const s of [-1, 1]) {
+      const bed = flat(bedW, LEN, bedMat);
+      bed.position.set(s * (LANE.halfW + bedW / 2), -0.09, MID);
+      scene.add(bed);
+    }
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 60), new THREE.MeshLambertMaterial({ color: this.cast ? 0xf3e2c4 : 0xdfeef6 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, -0.5, Z(12));
-    this.scene.add(floor);
+    // The capping between two lanes: walnut, with a cream strip along the top.
+    const capW = PITCH - LANE.wallX * 2;
+    const walnut = new THREE.MeshPhongMaterial({ color: hex(C.walnut), shininess: 60, specular: 0x554433 });
+    const cream = new THREE.MeshPhongMaterial({ color: hex(C.cream), shininess: 40 });
+    const capLen = -PIN_Z + 0.1;
+    scene.add(
+      copies(new THREE.BoxGeometry(capW, 0.1, capLen), walnut, caps.map((n) => (o) => o.position.set((n + 0.5) * PITCH, 0.01, -capLen / 2))),
+      copies(new THREE.BoxGeometry(capW * 0.42, 0.012, capLen), cream, caps.map((n) => (o) => o.position.set((n + 0.5) * PITCH, 0.064, -capLen / 2))),
+      // The posts between the openings the pins stand in.
+      copies(new THREE.BoxGeometry(capW, MASK_Y + 0.02, PIN_Z - PIT_Z + 0.1), new THREE.MeshPhongMaterial({ color: 0x2f6f6b, shininess: 30 }),
+        caps.map((n) => (o) => o.position.set((n + 0.5) * PITCH, MASK_Y / 2, (PIN_Z + 0.1 + PIT_Z) / 2))),
+    );
 
-    // The wall above the pins, across every lane, and the dark pit behind them.
-    const wallZ = Z(LANE.deckEnd + 0.5);
-    const pit = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.9), new THREE.MeshBasicMaterial({ color: 0x16283a }));
-    pit.position.set(0, 0.25, wallZ);
-    const maskH = this.cast ? 2.7 : 1.5;
-    const mask = new THREE.Mesh(new THREE.PlaneGeometry(30, maskH), new THREE.MeshLambertMaterial({ color: 0x2f8fd8 }));
-    mask.position.set(0, 0.7 + maskH / 2, wallZ + 0.02);
-    const trim = new THREE.Mesh(new THREE.PlaneGeometry(30, 0.08), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    trim.position.set(0, 0.72, wallZ + 0.03);
-    const upper = new THREE.Mesh(new THREE.PlaneGeometry(30, 6), new THREE.MeshLambertMaterial({ color: this.cast ? 0xfff6e6 : 0xeaf5fb }));
-    upper.position.set(0, 5.2, wallZ);
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(this.cast ? 4.4 : 2.2, this.cast ? 1.1 : 0.55), new THREE.MeshBasicMaterial({ map: signTexture(this.sign) }));
-    sign.position.set(0, this.cast ? 1.72 : 1.42, wallZ + 0.05);
-    this.scene.add(pit, mask, trim, upper, sign);
+    // The wall above the pins, the dark pit behind them, the ceiling and the side walls.
+    const endWall = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, CEIL - MASK_Y), new THREE.MeshBasicMaterial({ map: endWallTexture(this.sign) }));
+    endWall.position.set(0, (CEIL + MASK_Y) / 2, MASK_Z);
+    const pit = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, MASK_Y + 0.2), new THREE.MeshBasicMaterial({ map: pitTexture() }));
+    pit.position.set(0, MASK_Y / 2, PIT_Z);
+    const soffit = flat(HALL_W, MASK_Z - PIT_Z, new THREE.MeshBasicMaterial({ color: 0x1a120d, side: THREE.DoubleSide }));
+    soffit.position.set(0, MASK_Y, (MASK_Z + PIT_Z) / 2);
+    const depth = BACK_Z - PIT_Z;
+    const ceiling = flat(HALL_W, depth, new THREE.MeshBasicMaterial({ map: ceilingTexture(), side: THREE.BackSide }));
+    ceiling.position.set(0, CEIL, (BACK_Z + PIT_Z) / 2);
+    scene.add(endWall, pit, soffit, ceiling);
+    const sideMat = new THREE.MeshBasicMaterial({ map: sideWallTexture() });
+    for (const s of [-1, 1]) {
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(depth, CEIL), sideMat);
+      wall.rotation.y = -s * Math.PI / 2;
+      wall.position.set(s * HALL_W / 2, CEIL / 2, (BACK_Z + PIT_Z) / 2);
+      scene.add(wall);
+    }
+
+    // The approach, the foul line, and the carpet where the seats are.
+    const approach = flat(HALL_W, APPROACH, new THREE.MeshPhongMaterial({ map: approachTexture(), shininess: 90, specular: 0x5a4c3c }));
+    approach.position.set(0, -0.002, APPROACH / 2);
+    const foul = flat(HALL_W, 0.035, new THREE.MeshBasicMaterial({ color: 0x3a2413 }));
+    foul.position.set(0, 0.001, 0.02);
+    const carpet = flat(HALL_W, BACK_Z - APPROACH, new THREE.MeshLambertMaterial({ map: carpetTexture() }));
+    carpet.position.set(0, -0.002, (BACK_Z + APPROACH) / 2);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, CEIL), new THREE.MeshBasicMaterial({ map: backWallTexture() }));
+    back.rotation.y = Math.PI;
+    back.position.set(0, CEIL / 2, BACK_Z);
+    scene.add(approach, foul, carpet, back);
+
+    // The lanes next door, some of them part way through a frame.
+    const r = rng(11);
+    const bodies = [];
+    for (const n of others) {
+      const standing = r() > 0.55 ? 0.55 : 1;
+      for (const p of pinLayout()) {
+        if (r() > standing) continue;
+        bodies.push([n * PITCH + p.x, Z(p.z)]);
+      }
+    }
+    const bands = [];
+    for (const [x, z] of bodies) for (const y of BAND_Y) bands.push((o) => { o.position.set(x, y * PIN_SCALE, z); o.scale.setScalar(PIN_SCALE); });
+    scene.add(
+      copies(PIN_BODY, PIN_WHITE, bodies.map(([x, z]) => (o) => { o.position.set(x, 0, z); o.scale.setScalar(PIN_SCALE); })),
+      copies(PIN_BAND, PIN_RED, bands),
+    );
+
+    this.buildReturns(walnut, cream);
 
     this.ball = new THREE.Group();
     this.ball.add(new THREE.Mesh(
       new THREE.SphereGeometry(LANE.ballR, 32, 24),
-      new THREE.MeshPhongMaterial({ color: this.cast ? 0x2f6fe0 : BALL, shininess: 160, specular: 0xffffff }),
+      new THREE.MeshPhongMaterial({ map: ballTexture('#c93a2e', '#ffb09a', 5), shininess: 190, specular: 0xffffff, emissive: 0x220806 }),
     ));
     // Finger holes, so you can see the ball roll.
-    for (const [x, y] of [[-0.03, 0.03], [0.03, 0.03], [0, -0.025]]) {
-      const hole = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8), new THREE.MeshBasicMaterial({ color: 0x06261a }));
-      hole.position.set(x, y, LANE.ballR).setLength(LANE.ballR - 0.003);
+    const holeMat = new THREE.MeshBasicMaterial({ color: 0x2a0a08 });
+    for (const [x, y] of [[-0.03, 0.03], [0.03, 0.03], [0, -0.03]]) {
+      const hole = new THREE.Mesh(new THREE.SphereGeometry(0.015, 8, 8), holeMat);
+      hole.position.set(x, y, LANE.ballR).setLength(LANE.ballR - 0.004);
       this.ball.add(hole);
     }
     this.reflected(this.ball);
+    this.ballShadow = softShadow(LANE.ballR * 1.7, 0.5);
+    scene.add(this.ballShadow);
 
     this.aimTex = aimTexture();
     this.aimLine = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.16, this.cast ? 6 : 3.4),
-      new THREE.MeshBasicMaterial({ map: this.aimTex, transparent: true, opacity: 0.9, depthWrite: false }),
+      new THREE.PlaneGeometry(0.11, 4.2),
+      new THREE.MeshBasicMaterial({ map: this.aimTex, transparent: true, opacity: 0.5, depthWrite: false }),
     );
     this.aimLine.rotation.x = -Math.PI / 2;
     this.aimLine.renderOrder = 3;
-    this.scene.add(this.aimLine);
+    scene.add(this.aimLine);
 
     this.pins = pinLayout().map(() => this.reflected(pinMesh()));
+    this.pinShadows = this.pins.map(() => {
+      const s = softShadow(0.11, 0.42);
+      s.renderOrder = 3;
+      scene.add(s);
+      return s;
+    });
     if (this.cast) this.buildCast();
   }
 
-  // The approach, the bowler, the robots and the wall behind them.
-  buildCast() {
-    const approach = new THREE.Mesh(new THREE.PlaneGeometry(14, 7), new THREE.MeshPhongMaterial({ color: 0xf1d6a2, shininess: 50 }));
-    approach.rotation.x = -Math.PI / 2;
-    approach.position.set(0, -0.003, Z(-3.5));
-    const foul = new THREE.Mesh(new THREE.PlaneGeometry(14, 0.05), new THREE.MeshBasicMaterial({ color: 0x8a5a2b }));
-    foul.rotation.x = -Math.PI / 2;
-    foul.position.set(0, -0.002, Z(-0.02));
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(16, 5), new THREE.MeshBasicMaterial({ color: 0xfff1d6, side: THREE.DoubleSide }));
-    back.position.set(0, 2.5, Z(-7));
-    const band = new THREE.Mesh(new THREE.PlaneGeometry(16, 0.5), new THREE.MeshBasicMaterial({ color: 0x4a8ff0, side: THREE.DoubleSide }));
-    band.position.set(0, 1.9, Z(-6.98));
-    this.scene.add(approach, foul, back, band);
-
-    // Two rows of seats behind the approach.
-    const seatMat = new THREE.MeshPhongMaterial({ color: 0x4a8ff0, shininess: 40 });
-    for (const [z, y] of [[-4.9, 0.25], [-5.9, 0.55]]) {
-      const bench = new THREE.Mesh(new THREE.BoxGeometry(6.4, y, 0.8), seatMat);
-      bench.position.set(0, y / 2, Z(z));
-      this.scene.add(bench);
+  // A ball return on every other capping: a low walnut cabinet, a cream hood and a few house balls.
+  buildReturns(walnut, cream) {
+    const ballGeo = new THREE.SphereGeometry(LANE.ballR, 18, 12);
+    const balls = [
+      ballTexture('#e2a52e', '#fff0b8', 21), ballTexture('#1f7f86', '#a9ecec', 22), ballTexture('#6a3f8f', '#dcbcf2', 23),
+    ].map((map) => new THREE.MeshPhongMaterial({ map, shininess: 160, specular: 0xffffff }));
+    const hoodGeo = new THREE.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+    for (const n of [-3, -1, 1]) {
+      const x = (n + 0.5) * PITCH;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.3, 1.5), walnut);
+      base.position.set(x, 0.15, 1.35);
+      const tray = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 1.0), cream);
+      tray.position.set(x, 0.31, 1.55);
+      const hood = new THREE.Mesh(hoodGeo, cream);
+      hood.scale.set(0.82, 0.8, 1.15);
+      hood.position.set(x, 0.3, 0.82);
+      this.scene.add(base, tray, hood);
+      balls.forEach((m, i) => {
+        if (n !== -1 && i === (n + 4) % 3) return;
+        const b = new THREE.Mesh(ballGeo, m);
+        b.position.set(x, 0.325 + LANE.ballR, 1.28 + i * 0.26);
+        b.rotation.set(i, n, 0.4);
+        this.scene.add(b);
+      });
     }
-    // A rack of spare balls beside the approach.
-    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 1.0), new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 90 }));
-    rack.position.set(-1.25, 0.15, Z(-1.3));
-    this.scene.add(rack);
-    [0xff6f59, 0xffd23f, 0x3ccf91].forEach((c, i) => {
-      const b = new THREE.Mesh(new THREE.SphereGeometry(LANE.ballR, 20, 14), new THREE.MeshPhongMaterial({ color: c, shininess: 140, specular: 0xffffff }));
-      b.position.set(-1.25, 0.3 + LANE.ballR * 0.8, Z(-1.3 - 0.3 + i * 0.3));
-      this.scene.add(b);
-    });
+  }
+
+  // The bowler, the seats behind the approach, and the robots in them.
+  buildCast() {
+    const seat = new THREE.MeshPhongMaterial({ color: hex(C.coral), shininess: 40 });
+    const frame = new THREE.MeshPhongMaterial({ color: hex(C.cream), shininess: 30 });
+    const rows = [[5.7, 0.3], [6.7, 0.52]];
+    for (const [z, y] of rows) {
+      const bench = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.1, 0.62), seat);
+      bench.position.set(0, y - 0.05, z);
+      const rest = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.42, 0.1), seat);
+      rest.position.set(0, y + 0.2, z + 0.34);
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(5.5, y - 0.1, 0.7), frame);
+      plinth.position.set(0, (y - 0.1) / 2, z + 0.02);
+      this.scene.add(bench, rest, plinth);
+    }
 
     this.bowler = new Bowler();
     this.scene.add(this.bowler.group);
-    this.ballShadow = new THREE.Mesh(
-      new THREE.CircleGeometry(LANE.ballR * 1.1, 16),
-      new THREE.MeshBasicMaterial({ color: 0x3b2a14, transparent: true, opacity: 0.25, depthWrite: false }),
-    );
-    this.ballShadow.rotation.x = -Math.PI / 2;
-    this.ballShadow.renderOrder = 4;
-    this.scene.add(this.ballShadow);
 
+    // Yaw 0 faces the seats, so the audience is turned round to face the pins.
     const spots = [];
-    const railX = LANE.wallX + 0.25;
-    // Small robots perched on the rails beside the lane, facing it.
-    for (let i = 0; i < 6; i++) {
-      const z = 2.2 + i * 2.1;
-      spots.push([-railX, 0.1, Z(z), Math.PI / 2, 0.85], [railX, 0.1, Z(z + 1), -Math.PI / 2, 0.85]);
-    }
-    // Bigger ones standing beside the approach.
-    spots.push([1.5, 0, Z(-0.9), -2.3, 1.5], [2.1, 0, Z(-0.2), -2.2, 1.35], [-1.9, 0, Z(-0.3), 2.3, 1.4], [-2.5, 0, Z(-1.2), 2.2, 1.55]);
-    // And the audience on the seats behind, facing down the lane.
-    for (let i = 0; i < 7; i++) {
-      spots.push([-2.7 + i * 0.9, 0.25, Z(-4.9), Math.PI, 1.5], [-2.25 + i * 0.9, 0.55, Z(-5.9), Math.PI, 1.5]);
-    }
+    [-2.1, -1.2, 0.5, 1.5].forEach((x) => spots.push([x, rows[0][1], rows[0][0], Math.PI, 1.5]));
+    [-1.7, -0.3, 0.9, 2.2].forEach((x) => spots.push([x, rows[1][1], rows[1][0], Math.PI, 1.5]));
+    // Two regulars standing by the next lane, and the attendant by the ball return.
+    spots.push([-2.5, 0, 2.3, 2.5, 1.45], [-3.05, 0, 2.75, 2.4, 1.3]);
+    spots.push([2.15, 0, 0.25, -2.0, 1.35, true]);
     this.crowd = new Crowd(this.scene, spots);
   }
 
   // 'back' while the button is held, 'forward' once it is released, 'idle' otherwise.
-  setSwing(state) { this.swing = state; }
+  setSwing(state) {
+    this.swing = state;
+    if (state !== 'back' && this.bowler) this.bowler.drive = null;
+  }
+
+  // Where the real controller says the bowling arm is: 0 hangs straight down, positive is towards the pins.
+  setArm(angle) {
+    if (this.bowler && this.swing === 'back') this.bowler.drive = angle;
+  }
 
   // Shows the bowler and the robots reacting. `kind` is 'strike', 'miss' or 'gutter'.
   react(kind) {
     if (!this.cast) return;
     this.reaction = kind;
     this.cut = true;
-    this.bowler.set(kind === 'strike' ? 'cheer' : 'sad');
+    this.bowler.set(kind === 'strike' ? 'cheer' : kind === 'gutter' ? 'slump' : 'sad');
     this.crowd.setMood(kind === 'strike' ? 'cheer' : 'sad');
   }
 
@@ -379,7 +748,7 @@ export class Lane {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // A tall, narrow window needs a wider view to keep the whole lane in.
-    this.camera.fov = w / h < 0.9 ? 52 : this.cast ? 40 : 38;
+    this.wide = w / h < 0.9 ? 1.5 : w / h < 1.3 ? 1.2 : 1;
     this.camera.updateProjectionMatrix();
   }
 
@@ -397,9 +766,9 @@ export class Lane {
     this.world = null;
     this.resetPins();
     this.swing = 'idle';
-    if (this.reaction) this.cut = true;
+    this.cut = true;
     this.reaction = null;
-    if (this.cast) { this.bowler.set('address'); this.crowd.setMood('idle'); }
+    if (this.cast) { this.bowler.drive = null; this.bowler.set('address'); this.crowd.setMood('idle'); }
   }
 
   setAim(aim) {
@@ -418,7 +787,7 @@ export class Lane {
     this.acc = 0;
     this.hitSeen = false;
     this.swing = 'idle';
-    if (this.cast) this.bowler.set('follow');
+    if (this.cast) { this.bowler.drive = null; this.bowler.set('follow'); }
     return new Promise((resolve) => { this.onDone = resolve; });
   }
 
@@ -438,32 +807,30 @@ export class Lane {
       this.slow = 0;
     }
 
-    let camZ = -3.3;
-    let camY = 1.45;
-    if (this.world) {
+    const w = this.world;
+    if (w) {
       // The last metre before the pins and the first moment of the crash run slower, for suspense.
-      const w0 = this.world;
-      const near = this.cast && !w0.ball.gutter && w0.ball.z > LANE.pinZ - 1.3 && (w0.hitTime == null || w0.time - w0.hitTime < 0.4);
+      const near = !w.ball.gutter && w.ball.z > LANE.pinZ - 1.3 && (w.hitTime == null || w.time - w.hitTime < 0.4);
       this.acc += dt * (near ? 0.5 : 1);
       const h = 1 / 120;
-      while (this.acc >= h && !this.world.done) {
-        step(this.world, h);
+      while (this.acc >= h && !w.done) {
+        step(w, h);
         this.acc -= h;
       }
-      const b = this.world.ball;
+      const b = w.ball;
       // The first pin hit shakes the camera.
-      if (!this.hitSeen && this.world.hitTime != null && !b.gutter) {
+      if (!this.hitSeen && w.hitTime != null && !b.gutter) {
         this.hitSeen = true;
-        this.shake = 0.05 + 0.006 * Math.hypot(b.vx, b.vz);
+        this.shake = 0.04 + 0.005 * Math.hypot(b.vx, b.vz);
         if (this.onHit) this.onHit(Math.hypot(b.vx, b.vz));
       }
       // A short hop off the hand at the start of the roll.
-      const hop = Math.max(0, 0.05 - Math.abs(this.world.time - 0.12) * 0.42);
+      const hop = Math.max(0, 0.05 - Math.abs(w.time - 0.12) * 0.42);
       this.ball.visible = !b.gone;
       this.ball.position.set(b.x, (b.gutter ? LANE.ballR - 0.07 : LANE.ballR) + hop, Z(b.z));
-      this.ball.rotation.x -= (b.vz * dt) / LANE.ballR;
+      this.ball.rotation.x -= (b.vz * dt * K) / LANE.ballR;
       this.ball.rotation.z -= (b.vx * dt) / LANE.ballR;
-      this.world.pins.forEach((p, i) => {
+      w.pins.forEach((p, i) => {
         const m = this.pins[i];
         m.visible = !p.gone;
         m.position.x = p.x;
@@ -475,33 +842,42 @@ export class Lane {
           m.rotateY(Math.atan2(p.dirX, -p.dirZ) + p.spin * Math.min(p.fallT, 1.2));
           m.rotateX(-tilt);
           const jump = Math.max(0, p.pop * p.fallT - 4.9 * p.fallT * p.fallT);
-          m.position.y = Math.sin(tilt) * 0.055 + jump;
+          m.position.y = Math.sin(tilt) * 0.06 + jump;
         }
       });
-      camZ = Math.min(LANE.pinZ - 4.6, Math.max(-3.3, b.gone ? LANE.pinZ - 4.6 : b.z - 3.4));
-      camY = 1.45 - 0.4 * Math.min(1, Math.max(0, camZ + 3.3) / 6);
-      if (this.world.done && this.onDone) {
+      if (w.done && this.onDone) {
         const done = this.onDone;
         this.onDone = null;
-        done(result(this.world));
+        done(result(w));
       }
     } else {
       this.aimShown += (this.aim - this.aimShown) * Math.min(1, dt * 14);
-      const x = this.aimShown * 0.36;
       // The waiting ball bobs a little, so the lane never looks frozen.
       this.ball.visible = true;
-      this.ball.position.set(x, LANE.ballR + 0.012 + Math.sin(this.clock * 2.6) * 0.012, Z(0));
+      this.ball.position.set(this.aimShown * 0.36, LANE.ballR + 0.012 + Math.sin(this.clock * 2.6) * 0.012, 0);
       this.ball.rotation.set(0, this.clock * 0.6, 0);
     }
     if (this.cast) this.frameCast(dt);
+    this.frameView();
 
-    this.aimLine.visible = !this.world;
-    if (!this.world) {
-      const mid = this.cast ? 3.4 : 2;
-      this.aimLine.position.set(this.aimShown * 0.36 + this.aimShown * 0.022 * mid, 0.006, Z(mid));
-      this.aimLine.rotation.z = -this.aimShown * 0.022;
-      this.aimTex.offset.y = -(this.clock * 0.9) % 1;
-      this.aimLine.material.opacity = 0.65 + 0.25 * Math.sin(this.clock * 4);
+    const bp = this.ball.position;
+    this.ballShadow.visible = this.ball.visible && !(w && w.ball.gutter);
+    this.ballShadow.position.set(bp.x, 0.007, bp.z);
+    this.ballShadow.scale.setScalar(Math.max(0.45, 1 - (bp.y - LANE.ballR) * 0.9));
+    this.pins.forEach((m, i) => {
+      const s = this.pinShadows[i];
+      s.visible = m.visible;
+      s.position.set(m.position.x, 0.005, m.position.z);
+    });
+
+    this.aimLine.visible = !w && this.swing !== 'forward';
+    if (!w) {
+      const mid = 2.5;
+      const drift = (this.aimShown * 0.022) / K;
+      this.aimLine.position.set(this.aimShown * 0.36 + drift * mid, 0.006, -mid);
+      this.aimLine.rotation.z = -drift;
+      this.aimTex.offset.y = -(this.clock * 0.8) % 1;
+      this.aimLine.material.opacity = 0.42 + 0.14 * Math.sin(this.clock * 4);
     }
 
     for (const [obj, twin] of this.twins) {
@@ -511,30 +887,66 @@ export class Lane {
     }
 
     const cam = this.camera.position;
-    const k = this.cut ? 1 : Math.min(1, dt * 5);
-    this.shake = Math.max(0, this.shake - dt * 0.22);
+    const v = this.view;
+    const k = this.cut ? 1 : Math.min(1, dt * (v.rate || 5));
+    this.shake = Math.max(0, this.shake - dt * 0.2);
     const sx = (Math.random() - 0.5) * this.shake;
     const sy = (Math.random() - 0.5) * this.shake;
-    if (this.cast) {
-      const v = this.view;
-      cam.x += (v.x - cam.x) * k;
-      cam.y += (v.y - cam.y) * k;
-      cam.z += (v.z - cam.z) * k;
-      this.look.x += (v.lx - this.look.x) * k;
-      this.look.y += (v.ly - this.look.y) * k;
-      this.look.z += (v.lz - this.look.z) * k;
-      this.camera.lookAt(this.look.x + sx, this.look.y + sy, this.look.z);
-    } else {
-      cam.x += (0 - cam.x) * k;
-      cam.y += (camY - cam.y) * k;
-      cam.z += (Z(camZ) - cam.z) * k;
-      this.camera.lookAt(sx, 0.2 + sy, cam.z - 7);
+    cam.x += (v.x - cam.x) * k;
+    cam.y += (v.y - cam.y) * k;
+    cam.z += (v.z - cam.z) * k;
+    this.look.x += (v.lx - this.look.x) * k;
+    this.look.y += (v.ly - this.look.y) * k;
+    this.look.z += (v.lz - this.look.z) * k;
+    this.fov += (v.fov * this.wide - this.fov) * k;
+    if (Math.abs(this.camera.fov - this.fov) > 0.01) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
     }
+    this.camera.lookAt(this.look.x + sx, this.look.y + sy, this.look.z);
     this.cut = false;
     this.renderer.render(this.scene, this.camera);
   }
 
-  // The bowler, the robots and the third-person camera.
+  // Where the camera wants to be: behind the bowler, chasing the ball, watching the pins, or on the bowler's face.
+  frameView() {
+    const v = this.view;
+    const w = this.world;
+    const ballX = this.aimShown * 0.36;
+    v.rate = 5;
+    if (this.reaction && this.cast) {
+      // Looking back up the lane at the bowler and the seats.
+      const bx = this.bowler.group.position.x;
+      v.x = bx + 0.75; v.y = 0.92; v.z = STAND - 2.5;
+      v.lx = bx + 0.05; v.ly = 0.64; v.lz = STAND;
+      v.fov = 32;
+    } else if (w) {
+      const b = w.ball;
+      const bz = Z(Math.min(b.z, LANE.pinZ + 0.6));
+      // Chase the ball, low down. Stop short of the pins and creep in while they fall.
+      const since = w.hitTime == null ? 0 : w.time - w.hitTime;
+      const stop = PIN_Z + 3.3 - Math.min(0.7, since * 0.5);
+      const cz = Math.max(stop, bz + 2.3);
+      const close = Math.min(1, Math.max(0, (2.6 - cz) / 3));
+      // Pass the bowler on the right, then settle in behind the ball.
+      const beside = this.cast ? 0.8 * Math.min(1, Math.max(0, (cz + 1.6) / 1.4)) : 0;
+      v.x = b.x * 0.55 + beside; v.y = 1.15 - 0.5 * close; v.z = cz;
+      v.lx = b.x * 0.6 + beside * 0.35; v.ly = 0.2 + 0.05 * close; v.lz = Math.max(PIN_Z, cz - 5.5);
+      v.fov = 34 - 2 * close;
+      v.rate = 4.2;
+    } else if (this.cast) {
+      // Behind the bowler's right shoulder. The bowler stands left of the frame and the lane stays clear.
+      v.x = ballX * 0.55 + 0.95; v.y = 1.62; v.z = 5.2;
+      v.lx = ballX * 0.4 + 0.1; v.ly = 0.55; v.lz = -7;
+      v.fov = 28;
+    } else {
+      v.x = ballX * 0.5; v.y = 1.05; v.z = 2.9;
+      v.lx = ballX * 0.4; v.ly = 0.3; v.lz = -7;
+      v.fov = 30;
+    }
+  }
+
+  // The bowler and the robots.
   frameCast(dt) {
     const bw = this.bowler;
     const w = this.world;
@@ -542,10 +954,11 @@ export class Lane {
     if (!w) {
       bw.set(this.swing === 'back' ? 'back' : this.swing === 'forward' ? 'forward' : 'address');
       bw.group.position.x = ballX - 0.2;
-    } else if (!this.reaction && bw.state === 'follow' && bw.t > 1) {
+    } else if (!this.reaction && bw.state === 'follow' && bw.t > 0.9) {
       bw.set('watch');
     }
-    bw.group.position.z = Z(STAND_Z);
+    bw.sway = w ? Math.max(-1, Math.min(1, (w.ball.x - (bw.group.position.x + 0.2)) * 2.2)) : 0;
+    bw.group.position.z = STAND;
     bw.update(dt, this.clock);
     if (!w) {
       // The ball rides in the bowling hand until the throw starts.
@@ -555,31 +968,10 @@ export class Lane {
       this.ball.rotation.set(0.4, 0, 0);
     }
     const bp = this.ball.position;
-    this.ballShadow.visible = this.ball.visible && !(w && w.ball.gutter);
-    this.ballShadow.position.set(bp.x, 0.008, bp.z);
-    this.ballShadow.scale.setScalar(Math.max(0.4, 1 - (bp.y - LANE.ballR) * 1.2));
-
     const rolling = w && !this.reaction;
-    if (rolling) this.crowd.setMood(w.hitTime == null && w.ball.z > 7 ? 'tense' : 'idle');
+    if (rolling) this.crowd.setMood(w.hitTime == null && w.ball.z > LANE.pinZ * 0.5 ? 'tense' : 'idle');
     const bx = bw.group.position.x;
     if (rolling && !w.ball.gone) this.crowd.update(dt, this.clock, bp);
-    else this.crowd.update(dt, this.clock, { x: rolling ? 0 : bx, z: rolling ? Z(LANE.pinZ) : Z(STAND_Z) });
-
-    const v = this.view || (this.view = {});
-    if (this.reaction) {
-      // Looking back up the lane at the bowler and the seats.
-      v.x = bx + 0.7; v.y = 0.95; v.z = Z(STAND_Z + 2.4);
-      v.lx = bx; v.ly = 0.66; v.lz = Z(STAND_Z);
-    } else if (w) {
-      const b = w.ball;
-      const stop = LANE.pinZ - 4.2;
-      const cz = b.gone ? stop : Math.min(stop, Math.max(-3.9, b.z - 2.9));
-      const low = Math.min(1, Math.max(0, (cz + 1.5) / 3.5));
-      v.x = b.x * 0.5; v.y = 1.78 - 0.86 * low; v.z = Z(cz);
-      v.lx = b.x * 0.35; v.ly = -0.05 + 0.5 * low; v.lz = Z(cz + 7);
-    } else {
-      v.x = ballX * 0.6 + 0.12; v.y = 1.78; v.z = Z(-3.9);
-      v.lx = ballX * 0.5; v.ly = -0.05; v.lz = Z(3.2);
-    }
+    else this.crowd.update(dt, this.clock, { x: rolling ? 0 : bx, z: rolling ? PIN_Z : STAND });
   }
 }

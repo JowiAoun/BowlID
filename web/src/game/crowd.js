@@ -1,9 +1,14 @@
 // The spectators are robots. They have no backswing and so no accounts, and they watch.
 import * as THREE from 'three';
+import { softShadow } from './bowler.js';
 
-const BODY_COLORS = [0xdfe6ee, 0xbfd7ea, 0xffe2a8, 0xd6ecd2, 0xf5c9c2, 0xd9d2f0];
+const BODY_COLORS = [0xf3ead8, 0xf0b9a4, 0xf2d58a, 0xa9d6cf, 0xe6e0d2, 0xd9c7ea];
 const SCREEN = new THREE.MeshBasicMaterial({ color: 0x1d2733 });
-const METAL = new THREE.MeshPhongMaterial({ color: 0x8b98a8, shininess: 80 });
+const METAL = new THREE.MeshPhongMaterial({ color: 0x8d8f96, shininess: 80 });
+const CAP = new THREE.MeshPhongMaterial({ color: 0xe8573f, shininess: 40 });
+const CAP_TOP = new THREE.CylinderGeometry(0.1, 0.11, 0.05, 12);
+const CAP_PEAK = new THREE.BoxGeometry(0.2, 0.012, 0.09);
+const BOW = new THREE.ConeGeometry(0.03, 0.05, 6);
 const EYES = new THREE.MeshBasicMaterial({ color: 0x5fe3ff });
 const MOODS = { idle: 0x5fe3ff, cheer: 0x67ff8f, sad: 0xff5a4d, tense: 0xffd23f };
 
@@ -17,7 +22,7 @@ const ROD = new THREE.CylinderGeometry(0.006, 0.006, 0.08, 5);
 const BULB = new THREE.SphereGeometry(0.02, 8, 6);
 const bodyMats = BODY_COLORS.map((c) => new THREE.MeshPhongMaterial({ color: c, shininess: 60 }));
 
-function robot(i) {
+function robot(i, staff) {
   const m = bodyMats[i % bodyMats.length];
   const g = new THREE.Group();
   const base = new THREE.Mesh(BASE, METAL);
@@ -50,18 +55,35 @@ function robot(i) {
     return pivot;
   });
   g.add(base, body, head, ...arms);
+  if (staff) {
+    // The attendant wears a cap and a bow tie.
+    const top = new THREE.Mesh(CAP_TOP, CAP);
+    top.position.y = 0.105;
+    const peak = new THREE.Mesh(CAP_PEAK, CAP);
+    peak.position.set(0, 0.088, 0.12);
+    head.add(top, peak);
+    for (const s of [-1, 1]) {
+      const bow = new THREE.Mesh(BOW, CAP);
+      bow.rotation.z = s * Math.PI / 2;
+      bow.position.set(s * 0.022, 0.235, 0.08);
+      g.add(bow);
+    }
+  }
+  const shadow = softShadow(0.17, 0.3);
+  shadow.position.y = 0.004;
+  g.add(shadow);
   return { g, head, arms, phase: i * 1.7, yaw: 0, y: 0, scale: 1 };
 }
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
 export class Crowd {
-  // `spots` are [x, y, z, yaw, scale] in scene coordinates. Yaw 0 faces +z.
+  // `spots` are [x, y, z, yaw, scale, staff] in scene coordinates. Yaw 0 faces +z.
   constructor(scene, spots) {
     this.mood = 'idle';
     this.moodT = 0;
-    this.bots = spots.map(([x, y, z, yaw, scale], i) => {
-      const r = robot(i);
+    this.bots = spots.map(([x, y, z, yaw, scale, staff], i) => {
+      const r = robot(i, staff);
       r.g.position.set(x, y, z);
       r.g.rotation.y = yaw;
       r.g.scale.setScalar(scale);
