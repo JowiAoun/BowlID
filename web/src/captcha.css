@@ -136,10 +136,22 @@ input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 /* Which button on the remote presses this. Only shown while the remote is in use. */
 .remote { display: none; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); min-width: 24px; padding: 1px 7px; border-radius: 999px; background: var(--blue); color: #fff; font: 600 12px var(--ui); }
 body.wii .remote { display: inline-block; }
-.home .widget { text-align: left; }
+.home .widget { text-align: left; margin-top: 14px; }
+/* The log-in form: a username to type, and a password there is no field for. */
+.home .field { display: block; margin: 0 0 4px; text-align: left; color: var(--grey); font-size: 13px; }
+.home input { margin-bottom: 12px; }
+.nopass { margin: 0 0 6px; padding: 10px 12px; border: 1px dashed #c4c7cc; border-radius: 4px; text-align: left; color: #80868b; font-size: 14px; }
 .rule { margin: 18px 0 0; padding-top: 16px; border-top: 1px solid #e3e5e8; color: var(--grey); font-size: 14px; }
 .fine a { color: #5f6368; }
 .fine.left { text-align: left; }
+/* Most and least themselves */
+.board { width: min(520px, 100%); margin: 14px auto 0; padding: 16px 20px 12px; }
+.board h3 { margin: 0 0 6px; font-size: 14px; font-weight: 500; }
+.ranks th { padding: 7px 2px; border-top: 1px solid #eceff1; text-align: left; font-weight: 500; }
+.ranks th i { font-style: normal; font-weight: 400; font-size: 11px; color: #80868b; }
+.ranks td { text-align: right; font-variant-numeric: tabular-nums; }
+.ranks td:first-child { width: 22px; text-align: left; color: #80868b; }
+.ranks .heads td, .ranks .heads th { border-top: 0; font-size: 10.5px; font-weight: 400; color: #80868b; text-transform: uppercase; letter-spacing: 0.4px; }
 .ledger { width: min(520px, 100%); margin: 14px auto 0; text-align: center; font-size: 12px; color: #80868b; min-height: 18px; }
 .page { align-content: center; }
 
@@ -167,6 +179,13 @@ body.wii .remote { display: inline-block; }
 .inside .submit { width: auto; padding: 10px 26px; margin: 0; }
 .link { padding: 4px 2px; border: 0; background: none; color: var(--blue-deep); font-size: 13px; text-decoration: underline; }
 .link.danger { color: #b3261e; }
+/* Declined log-ins to this account */
+.alarm { margin: 0 0 4px; font-size: 14px; }
+.alarm.on { padding: 8px 10px; border-left: 4px solid #d93025; border-radius: 4px; background: #fdecea; color: #8c1d18; font-weight: 500; }
+.attempts td { font-size: 13px; }
+.attempts td:first-child { white-space: nowrap; color: var(--grey); }
+.attempts td b { margin-left: 4px; padding: 1px 6px; border-radius: 999px; background: #d93025; color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.attempts tr.new td { background: #fff8f7; }
 .why { margin-top: 18px; padding: 12px 14px 10px; border: 1px solid #dadce0; border-left: 4px solid #0f9d58; border-radius: 4px; background: #fbfcfd; }
 .why h3 { margin-top: 0; }
 
@@ -226,7 +245,7 @@ body.wii .remote { display: inline-block; }
 .ask span { display: block; font-size: 16px; }
 .ask strong { display: block; font-size: 30px; font-weight: 900; line-height: 1.15; }
 
-.stage { position: relative; margin: 7px; aspect-ratio: 16 / 10; background: #fff1d6; overflow: hidden; }
+.stage { position: relative; margin: 7px; aspect-ratio: 16 / 10; background: #2a1c12; overflow: hidden; }
 .lane { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .lane canvas { display: block; width: 100%; height: 100%; }
 
@@ -301,7 +320,9 @@ body.wii .remote { display: inline-block; }
 .report .head small { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px; opacity: 0.9; }
 .report .head h2 { margin: 1px 0 2px; font-size: 25px; font-weight: 700; line-height: 1.15; }
 .report .head p { margin: 0; font-size: 13.5px; }
-.report .actions { display: flex; align-items: center; gap: 12px; margin-top: 10px; color: var(--grey); }
+.report .head .also { margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.4); font-weight: 600; }
+/* The buttons stay in view when the report is taller than the lane. */
+.report .actions { position: sticky; bottom: -12px; display: flex; align-items: center; gap: 12px; margin: 10px -14px -12px; padding: 8px 14px 12px; border-top: 1px solid #e3e5e8; background: #fff; color: var(--grey); }
 .why.mid { border-left-color: #e37400; }
 
 .sim {
@@ -318,6 +339,25 @@ body.wii .remote { display: inline-block; }
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* Which controller is in use, small, in the corner of the lane. */
+.ctrl {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  padding: 3px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #5f6368;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.ctrl::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #d93025; }
+.ctrl.ok { pointer-events: none; }
+.ctrl.ok::before { background: #0f9d58; }
+.ctrl u { color: var(--blue-deep); }
 
 /* The game's own overlay. Round and cheerful, unlike everything around it. */
 
@@ -350,11 +390,11 @@ body.wii .remote { display: inline-block; }
 .power.live b { transition: none; }
 
 .slots { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; }
-.slot { display: grid; justify-items: center; align-content: center; gap: 1px; width: 86px; height: 60px; padding: 4px; border: 3px solid #d5e3ec; border-radius: 14px; background: rgba(255, 255, 255, 0.94); color: #5b7385; font-size: 12px; font-weight: 500; }
-.slot b { font-size: 20px; line-height: 1; color: #9db3c2; }
+.slot { display: grid; justify-items: center; align-content: center; gap: 0; width: 70px; height: 46px; padding: 3px; border: 2px solid #e6dcc8; border-radius: 12px; background: rgba(255, 252, 244, 0.9); color: #7a6650; font-size: 11px; font-weight: 500; }
+.slot b { font-size: 16px; line-height: 1; color: #b9a78c; }
 .slot.done { border-color: var(--blue); color: #17507f; animation: pop 0.3s cubic-bezier(.3,1.7,.5,1); }
 .slot.bad { border-color: #f1a7a0; color: #b3261e; text-decoration: line-through; }
-.slot canvas { width: 72px; height: 30px; }
+.slot canvas { width: 60px; height: 22px; }
 
 .hint {
   position: absolute;
@@ -364,9 +404,9 @@ body.wii .remote { display: inline-block; }
   margin: 0;
   padding: 6px 16px 7px;
   border-radius: 999px;
-  background: rgba(23, 50, 90, 0.78);
+  background: rgba(46, 28, 16, 0.62);
   color: #fff;
-  font-size: clamp(13px, 1.8vw, 17px);
+  font-size: clamp(12px, 1.5vw, 14px);
   font-weight: 500;
   white-space: nowrap;
   max-width: calc(100% - 20px);
@@ -374,7 +414,7 @@ body.wii .remote { display: inline-block; }
   text-overflow: ellipsis;
 }
 .hint b { color: #ffd23f; font-weight: 600; }
-.hint kbd { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 999px; background: #fff; color: #17325a; font: 700 0.9em var(--game); text-align: center; }
+.hint kbd { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: #fff; color: #3a2413; font: 700 0.9em var(--game); text-align: center; }
 
 .banner { position: absolute; left: 50%; top: 17%; transform: translate(-50%, -50%); text-align: center; white-space: nowrap; }
 .banner span {

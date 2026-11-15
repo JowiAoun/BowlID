@@ -103,6 +103,25 @@ export function identify(sig, accounts, cfg = MATCH_CONFIG) {
   return { outcome: rival ? 'ambiguous' : 'recognized', best, rival, ranked };
 }
 
+/* A claim: a username was typed, and one swing is checked against that one account. */
+
+// `account` and `others` are { id, profile } rows. `others` are the rest of the customers on file.
+//   verdict: match, retry or mismatch, against the claimed account only.
+//   crisis:  the swing opens the claimed account and would also open somebody else's.
+//   like:    the other customer this swing fits, when it fits one. { account, score } or null.
+// A swing that fits nobody else leaves `like` null. The nearest customer is not named for being nearest.
+export function verifyClaim(sig, account, others, cfg = MATCH_CONFIG) {
+  const v = verify(account.profile, sig, cfg);
+  const res = identify(sig, others, cfg);
+  const fits = res.outcome === 'recognized' || res.outcome === 'ambiguous';
+  return {
+    ...v,
+    crisis: v.verdict === 'match' && alsoMatches(sig, others.map((a) => a.profile), cfg) > 0,
+    like: fits ? { account: res.best.account, score: res.best.score } : null,
+    closest: res.best ? res.best.score : null,
+  };
+}
+
 // At enrollment: is this new profile too close to somebody already on file?
 // Each side's throws are checked against the other side's profile. Returns the closest clash or null.
 export function collision(profile, accounts, cfg = MATCH_CONFIG) {

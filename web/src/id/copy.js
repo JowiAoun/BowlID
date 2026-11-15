@@ -2,7 +2,7 @@
 
 export const ID = {
   name: 'BowlID',
-  tagline: 'Your identity is in your swing.',
+  tagline: 'Your password is your swing.',
   bank: 'BowlBank',
   sign: { name: 'BowlID', tagline: 'YOUR BACKSWING IS YOUR PASSWORD  ·  LANE 67', color: '#4a8ff0' },
 };
@@ -42,43 +42,58 @@ export function nameFor(profile, pinsList, taken, serial) {
 
 /* The header of the challenge window, per flow. */
 
-export function ask(flow, done, need) {
-  if (flow === 'enroll') return ['Create your', 'bowling identity', `Bowl ${need} times. Throw ${Math.min(done + 1, need)} of ${need}.`];
+export function ask(flow, done, need, username) {
+  if (flow === 'enroll') return ['Set the password for', username, `Bowl ${need} times. Throw ${Math.min(done + 1, need)} of ${need}.`];
   if (flow === 'practice') return ['Practice lane', 'no identity check', 'Swings are recorded for evaluation only.'];
-  return ['Verify your', 'bowling identity', 'Bowl once. Please confirm that you are you.'];
+  return ['Enter the password for', username, 'Bowl once. The password is your swing.'];
 }
+
+/* The front page: why the lane did not open. */
+
+export const USERNAME_NOTE = {
+  empty: 'Type a username first. The password comes after, and it is bowling.',
+  shape: 'A username is 2 to 20 letters, numbers, dots, dashes or underscores.',
+  taken: (u) => `${u} is taken. If that is you, log in with your swing.`,
+  missing: (u) => `Nobody called ${u} bowls here. Check the spelling, or create the account.`,
+  sample: (u) => `${u} is a sample customer with a formula swing. Use the sample links below.`,
+  wrongInput: (u, kind) => `${u} set their password with ${kind === 'wii' ? 'a Wii Remote' : 'a pointer'}. Switch input to log in.`,
+};
 
 /* Verdicts */
 
-export function headline(outcome, final) {
-  if (outcome === 'recognized') return 'Identity verified';
-  if (outcome === 'ambiguous') return 'Bowling identity crisis';
-  if (outcome === 'unsure') return final ? 'Identity unknown' : 'Identity inconclusive';
-  return 'Identity unknown';
+// `verdict` is match, retry or mismatch against the username that was typed.
+export function headline(verdict, final) {
+  if (verdict === 'match') return 'Password accepted';
+  if (verdict === 'retry' && !final) return 'Password inconclusive';
+  return 'Wrong password';
 }
 
-export function verdictLine(outcome, pins, names, final) {
-  if (outcome === 'recognized') {
+export function verdictLine(verdict, pins, username, final) {
+  if (verdict === 'match') {
     if (pins.gutter) return pick(['Gutter ball. Welcome back. We would know that swing anywhere.', 'Zero pins. Full access. Your account has never cared about pins.']);
     if (pins.strike) return pick(['A strike, and it is really you. The strike was not required and has not been recorded.', 'Welcome back. Please do not make a habit of the strike. It worries us.']);
     return pick(['Welcome back. Your backswing is as we remember it.', 'Welcome back. Your follow-through remains regrettable and unmistakable.']);
   }
-  if (outcome === 'ambiguous') {
-    const pair = `${names[0]} and ${names[1]}`;
-    if (final) return `We could not tell ${pair} apart. Neither account has been opened.`;
-    return pick([
-      `Your swing looks suspiciously like two of our customers: ${pair}. Please bowl again.`,
-      `Please bowl again. We are having trouble determining whether you are ${names[0]} or ${names[1]}.`,
-    ]);
+  if (verdict === 'retry') {
+    if (final) return `Three bowls and none of them was ${username}. The account stays shut.`;
+    return pick([`That was almost ${username}. Please bowl again, with more of ${username} in it.`, `Please bowl again to confirm that you are ${username}.`]);
   }
-  if (outcome === 'unsure') {
-    if (final) return 'We are unable to verify that you are yourself.';
-    return pick(['That was almost somebody. Please bowl again, with more of you in it.', 'Please bowl again to confirm that you are you.']);
-  }
-  if (pins.strike) return pick(['Strike detected. Identity not detected. Who are you?', 'A perfect throw from a perfect stranger.']);
-  if (pins.gutter) return pick(['Unknown swing, and a gutter ball. We admire the commitment.', 'We do not know you, and neither do the pins.']);
-  return pick(['Your wrist does not match our records.', 'We do not recognise this backswing. Who are you?', 'No customer on file bowls like that.']);
+  if (pins.strike) return pick([`A strike, and still not ${username}. The account stays shut.`, `A perfect throw. It is not ${username}'s throw.`]);
+  if (pins.gutter) return pick([`Not ${username}, and a gutter ball. We admire the commitment.`, `That is not how ${username} bowls, and the pins agree.`]);
+  return pick([`That is not how ${username} bowls.`, `Your wrist does not match what ${username} left on file.`, `${username} does not bowl like that.`]);
 }
+
+// What a declined swing says about the person who bowled it.
+export function whoElseLine(username, like) {
+  if (like) return `You are not ${username}. You bowl like ${like.account.username} (${like.score} / 100). ${username} will be told.`;
+  return `You are not ${username}, and nobody else on file bowls like that either. ${username} will be told somebody tried.`;
+}
+
+// The right swing for this account, which would also open somebody else's.
+export const crisisLine = (other) => `This swing would also open ${other}'s account. We have decided not to think about it.`;
+
+// One declined attempt, as the owner sees it.
+export const attemptLine = (a) => (a.likeName ? `Bowled like ${a.likeName} (${a.likeScore} / 100 as them)` : 'Bowled like nobody we know');
 
 // Lines for the report. Each one is tied to a row that was actually measured.
 const TRAIT_LINES = {
