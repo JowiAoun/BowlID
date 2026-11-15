@@ -1,0 +1,14 @@
+# Dependencies & build output
+node_modules/
+dist/
+.venv/
+__pycache__/
+
+# Local config & secrets
+.env
+.env.*
+!.env.example
+
+# Editor & system files
+.DS_Store
+*.log
