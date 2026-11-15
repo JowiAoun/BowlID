@@ -64,6 +64,9 @@ test('bridge: connect, data, disconnect and reconnect with made-up devices', { s
       BOWLBANK_TEST_PROC_DEVICES: procFile,
       BOWLBANK_TEST_INPUT_DIR: dir,
       BOWLBANK_SCAN_MS: '50',
+      // Fixed here so a calibration in the local .env cannot change the expected numbers.
+      BOWLBANK_ACCEL_ZERO: '0,0,0',
+      BOWLBANK_ACCEL_COUNTS_PER_G: '104',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
