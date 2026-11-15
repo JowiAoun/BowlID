@@ -1,10 +1,11 @@
 # Setup
 
-Everything needed to run Bowlometrics on your own machine. The README covers what it is. This covers getting it running.
+Everything needed to run BowlID on your own machine. The README covers what it is. This covers getting it running.
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) 20 or newer: runs the dev server, the build, the tests and the remote bridge.
+- [Git](https://git-scm.com/): to clone the repository.
+- [Node.js](https://nodejs.org/) 20.12 or newer: runs the dev server, the build, the tests and the remote bridge.
 
 The Wii remote is optional. Without it, the app runs with a mouse or a touch screen and labels those swings as simulated. For the remote you also need:
 
@@ -36,7 +37,7 @@ The Wii remote is optional. Without it, the app runs with a mouse or a touch scr
    | Variable | What it is | Where to get it |
    |---|---|---|
    | `VITE_AMPLITUDE_API_KEY` | Sends the scores to Amplitude. Empty means analytics is off. | Your Amplitude project's settings |
-   | `BOWLBANK_BRIDGE_PORT` | Port of the local Wii remote bridge. Default 8765. | Pick any free port |
+   | `BOWLBANK_BRIDGE_PORT` | Port of the local Wii remote bridge. Default 8765. | Pick any free port, and add `&bridge=PORT` to the page address |
    | `BOWLBANK_ACCEL_ZERO`, `BOWLBANK_ACCEL_COUNTS_PER_G` | Calibration for your remote. | Run `node bridge/calibrate.mjs` |
 
 ## Setup
@@ -61,7 +62,12 @@ With the Wii remote:
 1. Run `./scripts/start.sh`
 2. Open http://localhost:5173/?mode=wii
 
-Then type a username, press "Create this account" and bowl three times. To come back, type the username, press "Log in with your swing" and bowl once.
+On the page, either way:
+
+1. Type a username, press "Create this account" and bowl three times.
+2. To come back, type the username, press "Log in with your swing" and bowl once.
+
+The restart button at the bottom left of the bowling window starts the test again from the first throw.
 
 | | Aim | Bowl | Menus |
 |---|---|---|---|
@@ -70,7 +76,7 @@ Then type a username, press "Create this account" and bowl three times. To come 
 | Keyboard | Left and right arrows | Hold Space, let go when the power bar is high | Esc cancels |
 
 - The username is typed on the laptop's keyboard.
-- Wear the wrist strap.
+- With the remote, wear the wrist strap.
 - Pointer accounts and Wii accounts are kept apart and never compared.
 - The keyboard can bowl but records no swing, so it cannot create an account or log in.
 - Accounts live in that browser's storage. Enroll on the laptop and in the browser you will demo with.
@@ -84,8 +90,8 @@ Then type a username, press "Create this account" and bowl three times. To come 
 To measure the matcher on real people:
 
 1. Each person opens http://localhost:5173/?mode=wii&who=theirname
-2. Click "Practice lane" and bowl at least 8 times.
-3. Click "Export recorded swings" on the front page and move the file into `recordings/`.
+2. Click "Practice lane" and bowl at least 4 times. More throws give numbers worth reading, so aim for 8.
+3. Click the "Export N recorded swings" link on the front page and move the file into `recordings/`. The link appears after the first recorded swing.
 4. Run `npm run evaluate`
 
 It enrolls each person on their first three throws and tests the rest. It reports how often a person opens their own account, how often a stranger gets in, and how often the answer is "bowl again", with sample counts. Tune `MATCH_CONFIG` in `web/src/motion/matcher.js` from there.
@@ -95,7 +101,7 @@ It enrolls each person on their first three throws and tests the rest. It report
 1. Run `npx wrangler login` once.
 2. Run `npm run deploy`
 
-This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometrics` project, at https://bowlometrics.pages.dev. The public site works with a pointer. The remote only works on the laptop that runs the bridge.
+This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlid` project, at https://bowlid.pages.dev. The public site works with a pointer. The remote only works on the laptop that runs the bridge.
 
 ## Troubleshooting
 
@@ -105,6 +111,7 @@ This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometr
 | The remote's lights keep flashing | Leave the bridge running. It connects known remotes and repairs the kernel driver by itself, every few seconds. If the lights still flash after 20 seconds, run `./scripts/fix-driver.sh`. |
 | The page says the bridge is not running | Run `./scripts/start.sh`, or `npm run bridge` alone. |
 | The remote turned off | Press any button on it. The app carries on by itself. |
+| `Port 5173 is already in use` | Another copy is running. Stop it, or run `npm run dev -- --port 5199` and open that port. |
 | No sound | Click anywhere on the page first, then check the headphone button in the bowling window. |
 
 More on the remote, calibration and the bridge's messages: [`hardware.md`](hardware.md).

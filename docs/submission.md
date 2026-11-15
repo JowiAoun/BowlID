@@ -10,7 +10,7 @@ The product runs on one metric: the Bowlometric Identity Score, a number that de
 
 ## Devpost description
 
-**Bowlometrics: your password is your swing.**
+**BowlID: your password is your swing.**
 
 We got rid of passwords. You type a username, and then you bowl.
 
@@ -40,12 +40,12 @@ The score is a similarity measure. It is not a probability and it is not securit
 
 Check the Discord handles and paste the video link before posting. The handles below are the GitHub ones.
 
-> **Bowlometrics: your password is your swing** 🎳
+> **BowlID: your password is your swing** 🎳
 > We got rid of passwords: you type a username and then you bowl. You create an account by bowling three times with a Wii remote, and you log in by bowling once. Type somebody else's username and your swing is declined, and the owner is told who tried. The pins do not matter: a gutter ball from the right arm gets in, and a strike from the wrong arm is turned away. Every bowl gets a Bowlometric Identity Score out of 100.
 >
 > Team: Jowi Aoun (`@JowiAoun`), Ishar (`@isharghura`), Thomas (`@thomasnol`)
 > GitHub: https://github.com/thomasnol/proof-of-human
-> Demo: https://bowlometrics.pages.dev
+> Demo: https://bowlid.pages.dev
 > Video: PASTE THE VIDEO LINK HERE
 > Track: Stupidest Metric
 
@@ -73,7 +73,7 @@ Two people on stage and one remote.
 | 0:30 | B | Press A, bowl. Read the screen: "Wrong password. You are not A. You bowl like B." |
 | 0:42 | B | "It knows that is my swing, and it is telling on me." Press HOME to close. Hand the remote back. |
 | 0:46 | A | Press A, bowl, open the account. Point at "Attempts on your account": one new attempt, bowled like B. |
-| 0:55 | A | "Bowlometrics. Forget your password. Remember your backswing." |
+| 0:55 | A | "BowlID. Forget your password. Remember your backswing." |
 
 Nothing here is rigged. Whether a swing is accepted is whatever the matcher says. If B's swing is declined without being named, read that out: "nobody else on file bowls like that". The attempt still shows on A's account.
 
@@ -118,6 +118,6 @@ Take one more for Devpost with the real remote in someone's hand in front of the
 ## Before posting
 
 - [ ] Check the handles in the Discord post, and paste the video link there and into Devpost.
-- [ ] Run `npm run deploy` so the public site has this version, then paste the demo link, https://bowlometrics.pages.dev, into Devpost.
+- [ ] Run `npm run deploy` so the public site has this version, then paste the demo link, https://bowlid.pages.dev, into Devpost.
 - [ ] Pick the Stupidest Metric track on Devpost.
 - [ ] Post in `#share-your-work`. A project that is not posted there is not judged.
