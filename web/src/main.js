@@ -103,12 +103,30 @@ let source = null;
 const canBowl = () =>
   !state.busy && ['home', 'enroll', 'verify'].includes(state.screen) && (state.mode === 'demo' || state.status.connected);
 
+// Pressing B jerks the remote. The throw uses where it pointed just before the press.
+const aimLog = [];
+function steadyAim() {
+  if (state.replaying) return state.aim;
+  const now = performance.now();
+  const recent = aimLog.filter(([t]) => t >= now - 350 && t <= now - 70);
+  if (!recent.length) return state.aim;
+  return recent.reduce((s, [, a]) => s + a, 0) / recent.length;
+}
+
 // The hub is what every source and every replay talks to.
 const hub = {
   emit(name, ...args) {
     if (name === 'samples') { recorder.push(args[0]); trace.add(args[0]); }
-    else if (name === 'aim') { state.aim = args[0]; if (!state.busy) lane.setAim(args[0]); }
-    else if (name === 'press') { if (canBowl()) { state.pressAim = state.aim; hideStamp(); recorder.press(args[0]); } }
+    else if (name === 'aim') {
+      // The aim is locked while a swing is being read. The remote points everywhere during a swing.
+      if (recorder.state !== 'idle') return;
+      state.aim = args[0];
+      aimLog.push([performance.now(), args[0]]);
+      if (aimLog.length > 120) aimLog.shift();
+      if (!state.busy) lane.setAim(args[0]);
+    } else if (name === 'press') {
+      if (canBowl()) { state.pressAim = steadyAim(); lane.setAim(state.pressAim); hideStamp(); recorder.press(args[0]); }
+    }
     else if (name === 'release') recorder.release(args[0]);
   },
 };

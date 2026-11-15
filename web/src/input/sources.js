@@ -84,14 +84,32 @@ export class WiiSource extends Source {
       this.emit('button', msg.name, msg.down);
     } else if (msg.type === 'ir') {
       if (!msg.pts.length) return;
-      const x = msg.pts.reduce((s, p) => s + p[0], 0) / msg.pts.length;
-      // Smooth the pointer so the aim does not shake.
-      this.irX = this.irX == null ? x : this.irX + (x - this.irX) * 0.3;
+      const x = this.barCentre(msg.pts);
+      // Filter hard when the pointer is nearly still, and lightly when it moves, so it is steady but not slow.
+      const k = this.irX == null ? 1 : clamp(0.1 + Math.abs(x - this.irX) * 7, 0.1, 0.7);
+      this.irX = this.irX == null ? x : this.irX + (x - this.irX) * k;
       this.lastIr = performance.now();
-      this.setAim((this.irX - this.irCentre) * 3);
+      this.setAim((this.irX - this.irCentre) * 2.2);
     } else if (msg.type === 'status') {
       this.setStatus({ ...msg, bridge: true });
     }
+  }
+
+  // The middle of the sensor bar. When one of its two lights drops out of view,
+  // the last known gap between them keeps the middle from jumping.
+  barCentre(pts) {
+    const xs = pts.map((p) => p[0]).sort((a, b) => a - b);
+    if (xs.length >= 2) {
+      const left = xs[0];
+      const right = xs[xs.length - 1];
+      this.irHalf = (right - left) / 2;
+      this.irEnds = [left, right];
+      return (left + right) / 2;
+    }
+    if (this.irHalf == null) return xs[0];
+    const isLeft = Math.abs(xs[0] - this.irEnds[0]) <= Math.abs(xs[0] - this.irEnds[1]);
+    this.irEnds = isLeft ? [xs[0], xs[0] + this.irHalf * 2] : [xs[0] - this.irHalf * 2, xs[0]];
+    return isLeft ? xs[0] + this.irHalf : xs[0] - this.irHalf;
   }
 
   irActive() { return performance.now() - this.lastIr < 1500; }
