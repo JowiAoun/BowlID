@@ -691,11 +691,12 @@ function showReport(r) {
     ${reportBody(r)}
     <div class="actions">${actions}</div>`;
   el.hidden = false;
+  lane?.setPanel(true);
   drawReportGraph(el, r);
   setStatus(r.title, cls === 'ok' ? 'ok' : cls === 'bad' ? '' : 'plain');
   hint();
 }
-function hideReport() { $('report').hidden = true; }
+function hideReport() { $('report').hidden = true; lane?.setPanel(false); }
 
 /* Throws */
 
