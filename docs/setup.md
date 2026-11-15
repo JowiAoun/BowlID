@@ -102,7 +102,7 @@ This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometr
 | Problem | Fix |
 |---|---|
 | The pairing script finds nothing | Press SYNC again right after starting it. Check the batteries. |
-| The remote is connected but nothing happens | Run `./scripts/fix-driver.sh`. The kernel driver could not start. |
+| The remote's lights keep flashing | Leave the bridge running. It connects known remotes and repairs the kernel driver by itself, every few seconds. If the lights still flash after 20 seconds, run `./scripts/fix-driver.sh`. |
 | The page says the bridge is not running | Run `./scripts/start.sh`, or `npm run bridge` alone. |
 | The remote turned off | Press any button on it. The app carries on by itself. |
 | No sound | Click anywhere on the page first, then check the headphone button in the bowling window. |

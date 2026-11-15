@@ -10,7 +10,7 @@ The product runs on one metric: the Bowlometric Identity Score, a number that de
 
 ## Devpost description
 
-**Bowl ID: your password is your swing.**
+**Bowlometrics: your password is your swing.**
 
 We got rid of passwords. You type a username, and then you bowl.
 
@@ -26,7 +26,7 @@ The pins have nothing to do with it. A gutter ball from the right arm gets in. A
 - Each swing becomes a signature: the force waveform on three axes with the release pinned to one point, plus timing features. Those are how long the swing took, how hard it peaked, when the button was released against the peak, how the motion splits across axes, and the follow-through.
 - Signatures are compared with dynamic time warping. A log-in swing is checked against the profile for the typed username and has to pass that customer's own threshold. A declined swing is then compared with everyone else on file, and named if it fits one of them.
 - After each bowl a biometric report shows the measured numbers beside the ones on file.
-- The lane is drawn with Three.js. The pin physics is about 200 lines of our own JavaScript. The sounds are synthesised in the browser.
+- The lane is drawn with Three.js. The pin physics is about 200 lines of our own JavaScript. The ball and pin sounds are synthesised in the browser. The announcer, the robot voices and the music were generated with ElevenLabs.
 
 **What we learned**
 
@@ -38,14 +38,15 @@ The score is a similarity measure. It is not a probability and it is not securit
 
 ## Discord post for `#share-your-work`
 
-Fill in the names and handles before posting.
+Check the Discord handles and paste the video link before posting. The handles below are the GitHub ones.
 
-> **Bowl ID: your password is your swing** 🎳
+> **Bowlometrics: your password is your swing** 🎳
 > We got rid of passwords: you type a username and then you bowl. You create an account by bowling three times with a Wii remote, and you log in by bowling once. Type somebody else's username and your swing is declined, and the owner is told who tried. The pins do not matter: a gutter ball from the right arm gets in, and a strike from the wrong arm is turned away. Every bowl gets a Bowlometric Identity Score out of 100.
 >
-> Team: NAME (`@handle`), NAME (`@handle`), NAME (`@handle`)
+> Team: Jowi Aoun (`@JowiAoun`), Ishar (`@isharghura`), Thomas (`@thomasnol`)
 > GitHub: https://github.com/thomasnol/proof-of-human
 > Demo: https://bowlometrics.pages.dev
+> Video: PASTE THE VIDEO LINK HERE
 > Track: Stupidest Metric
 
 ## Before going on stage
@@ -72,7 +73,7 @@ Two people on stage and one remote.
 | 0:30 | B | Press A, bowl. Read the screen: "Wrong password. You are not A. You bowl like B." |
 | 0:42 | B | "It knows that is my swing, and it is telling on me." Press HOME to close. Hand the remote back. |
 | 0:46 | A | Press A, bowl, open the account. Point at "Attempts on your account": one new attempt, bowled like B. |
-| 0:55 | A | "Bowl ID. Forget your password. Remember your backswing." |
+| 0:55 | A | "Bowlometrics. Forget your password. Remember your backswing." |
 
 Nothing here is rigged. Whether a swing is accepted is whatever the matcher says. If B's swing is declined without being named, read that out: "nobody else on file bowls like that". The attempt still shows on A's account.
 
@@ -104,19 +105,19 @@ Record this before going on stage, on the demo laptop, with the real remote.
 
 ## Screenshots
 
-These are in `docs/screenshots/`. The `bowlid-` ones were taken in a headless browser with formula swings fed through the pointer path, which is why they carry the "simulated" label.
+These are in `docs/images/`, taken in a headless browser with pointer swings, which is why they carry the "simulated" label.
 
-- `bowlid-login.png`: the front page, with the username field and the ranking.
-- `bowlid-wrong-password.png`: a customer bowling on somebody else's account, declined and named.
-- `bowlid-attempts.png`: the owner's account afterwards, with the attempts and the you-ness chart.
-- `bowlid-home.png`, `bowlid-enroll.png`, `bowlid-gutter-verified.png`, `bowlid-unknown.png`, `bowlid-crisis.png`, `bowlid-account.png`: the version before usernames, when one bowl was compared with everyone on file.
-- `home.png`, `gutter-approved.png`, `strike-declined.png`, `account.png`: the earlier BowlBank version.
+- `hero.png`: the report after a log-in bowl, with the score and the pins marked "Not considered".
+- `game.png`: the bowling game inside the login window.
+- `home.png`: the front page, with the username field and no password field.
+- `enroll.png`: creating an account.
+- `account.png`: the account after logging in.
 
 Take one more for Devpost with the real remote in someone's hand in front of the screen.
 
 ## Before posting
 
-- [ ] Replace the names and handles in the README team section and in the Discord post.
+- [ ] Check the handles in the Discord post, and paste the video link there and into Devpost.
 - [ ] Run `npm run deploy` so the public site has this version, then paste the demo link, https://bowlometrics.pages.dev, into Devpost.
 - [ ] Pick the Stupidest Metric track on Devpost.
 - [ ] Post in `#share-your-work`. A project that is not posted there is not judged.

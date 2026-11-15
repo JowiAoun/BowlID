@@ -21,7 +21,7 @@ Made for the Stupid Ideas Hackathon (Ottawa F26). It is a joke. It is not securi
 
 Passwords get guessed, reused and forgotten. Fingerprints and face scans fixed that years ago, and they work, which makes them no use at a stupid ideas hackathon.
 
-Nobody has ever had their backswing stolen. So we took the password field off the login page and replaced it with the least convenient thing we could find that is still about you: one full bowling throw with a Wii remote, standing up, wrist strap on.
+Nobody has ever had their backswing stolen. So we took the password field off the login page. In its place is the least convenient thing we could find that is still about you: one full bowling throw with a Wii remote, standing up, wrist strap on.
 
 ## What it does
 
@@ -53,13 +53,13 @@ Wii remote → Bluetooth → Linux hid-wiimote driver → bridge (Node) → WebS
 ```
 
 1. The remote's three-axis accelerometer is read at about 100 Hz, from 250 ms before B is pressed to 400 ms after it is let go.
-2. The swing becomes a signature: 64 points per axis with the release always at the same point, plus timing features such as how long it took, how hard it peaked and how much the arm kept moving afterwards.
+2. The swing becomes a signature: 64 points per axis, with the release always at the same point. Timing features are added, such as how long it took, how hard it peaked and how much the arm kept moving afterwards.
 3. Two signatures are compared with dynamic time warping plus the feature differences. That gives one distance.
 4. Three enrollment throws make a profile. Its pass mark comes from how much those three throws differ from each other.
 5. A log-in swing is scored against the profile for the typed username. A declined swing is then compared with everyone else on file, and named if it fits.
 6. Pin count, ball speed and aim are worked out in a separate file, [`web/src/game/throw.js`](web/src/game/throw.js), and never reach the matcher.
 
-**The hard part** was not the matching. The laptop's kernel refused to start the Wii remote driver, because the driver asks for one unbroken 1 MB block of memory and a laptop that has been on for days has none. [`scripts/fix-driver.sh`](scripts/fix-driver.sh) makes the kernel tidy its memory and restarts the remote's input link, with no sudo and no button press. A bowling ball cannot be thrown until it has run.
+**The hard part** was not the matching. The laptop's kernel refused to start the Wii remote driver. The driver asks for one unbroken 1 MB block of memory, and a laptop that has been on for days has none. [`scripts/fix-driver.sh`](scripts/fix-driver.sh) makes the kernel tidy its memory and restarts the remote's input link, with no sudo and no button press. The bridge now runs it by itself when the remote connects without its driver.
 
 ## Built with
 
@@ -72,7 +72,7 @@ Wii remote → Bluetooth → Linux hid-wiimote driver → bridge (Node) → WebS
 | Voices, crowd and music | [ElevenLabs](https://elevenlabs.io/), filtered with [FFmpeg](https://ffmpeg.org/) |
 | Hosting | [Cloudflare Pages](https://pages.cloudflare.com/) |
 
-Off the shelf: the 3D library, the build tool, the WebSocket library, the analytics SDK, the font, and the generated voice and music clips. Written by us: the swing signature and matcher, the pin physics, the bridge that reads the remote from the kernel's input devices, the bowler and robots (built in code from simple shapes), the login window and the report.
+Off the shelf: the 3D library, the build tool, the WebSocket library, the analytics SDK, the font, and the generated voice and music clips. Written by us: the swing signature and matcher, the pin physics, and the bridge that reads the remote from the kernel's input devices. Also ours: the bowler and robots, built in code from simple shapes, and the login window and its report.
 
 ## Try it
 
