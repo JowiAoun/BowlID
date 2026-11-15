@@ -11,7 +11,7 @@
     "bridge": "node bridge/bridge.mjs",
     "test": "node --test",
     "evaluate": "node tools/evaluate.mjs",
-    "deploy": "vite build && wrangler pages deploy dist --project-name bowlbank --branch main"
+    "deploy": "./scripts/deploy.sh"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.11.0",

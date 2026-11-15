@@ -473,7 +473,10 @@ function boot() {
   const want = params.get('mode');
   if (want === 'wii') { setMode('wii'); return; }
   setMode('demo');
-  if (want === 'demo') return;
+  // Only look for the bridge when the page is served from this machine.
+  // On the public site a browser would ask the visitor for local network access.
+  const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+  if (want === 'demo' || !local) return;
   // On the demo laptop the bridge is running. If it answers with a live remote, use it.
   try {
     const probe = new WebSocket(BRIDGE_URL);
