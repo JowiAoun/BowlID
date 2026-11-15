@@ -1,4 +1,4 @@
-# BowlID
+# Bowl ID
 
 A username, and no password. Your password is how you bowl. 🎳
 
@@ -98,7 +98,7 @@ The Wii remote is read by a small program on the Ubuntu laptop, which only liste
 ## How it is built
 
 - `web/src/main.js`: the front page, the challenge window, the report and the account.
-- `web/src/id/store.js` and `copy.js`: the accounts kept in the browser, and everything BowlID says.
+- `web/src/id/store.js` and `copy.js`: the accounts kept in the browser, and everything Bowl ID says.
 - `web/src/motion/signal.js` and `matcher.js`: the swing signature, the distance, the profiles and the check against a username.
 - `web/src/game/`: the hall, the bowler, the robot spectators, the pin physics and the sounds. The sounds are made with Web Audio and there are no sound files.
 - `web/src/input/sources.js` and `bridge/`: the Wii remote, the pointer, and the bridge between the remote and the browser.
@@ -118,7 +118,7 @@ The Wii remote is read by a small program on the Ubuntu laptop, which only liste
 
 A bank where your password is how you bowl. 🎳
 
-In this version you pick your name from a list first, and the bank checks your swing against that one account. BowlID above has you type a username, and keeps a record of the attempts that were declined.
+In this version you pick your name from a list first, and the bank checks your swing against that one account. Bowl ID above has you type a username, and keeps a record of the attempts that were declined.
 
 Made for the Stupid Ideas Hackathon (Ottawa F26). No real money or banking is involved.
 
