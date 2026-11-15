@@ -223,7 +223,10 @@ body.wii .remote { display: inline-block; }
   place-items: center;
   padding: 12px;
   background: rgba(255, 255, 255, 0.72);
+  overscroll-behavior: contain;
 }
+/* The page behind the challenge stays where it is. */
+body.challenge { overflow: hidden; }
 .challenge {
   width: min(96vw, 860px, calc((100vh - 222px) * 1.6));
   min-width: min(96vw, 320px);
@@ -307,6 +310,7 @@ body.wii .remote { display: inline-block; }
   width: min(100%, max(56%, 400px));
   padding: 0 14px 12px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: rgba(255, 255, 255, 0.97);
   border-left: 1px solid #c1c1c1;
   box-shadow: -6px 0 18px rgba(0, 0, 0, 0.18);
