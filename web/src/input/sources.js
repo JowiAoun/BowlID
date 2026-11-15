@@ -245,21 +245,23 @@ export class MouseSource extends Source {
 }
 
 // Plays a recorded or synthetic swing back in real time through the same events.
+// Its timestamps are moved onto the live clock, so a replay can follow live input or another replay.
 export function replaySwing(swing, target) {
   return new Promise((resolve) => {
-    const base = performance.now() - swing.samples[0][0];
+    const shift = performance.now() - swing.samples[0][0];
+    const move = (r) => [r[0] + shift, r[1], r[2], r[3], r[4], r[5], r[6]];
     let i = 0;
     let pressed = false;
     let released = false;
     if (swing.aim != null) target.emit('aim', swing.aim);
     const timer = setInterval(() => {
-      const now = performance.now() - base;
+      const now = performance.now() - shift;
       const rows = [];
       while (i < swing.samples.length && swing.samples[i][0] <= now) {
         const r = swing.samples[i++];
-        if (!pressed && r[0] >= swing.pressT) { pressed = true; target.emit('samples', rows.splice(0)); target.emit('press', r[0]); }
-        if (!released && r[0] >= swing.releaseT) { released = true; target.emit('samples', rows.splice(0)); target.emit('release', r[0]); }
-        rows.push(r);
+        if (!pressed && r[0] >= swing.pressT) { pressed = true; target.emit('samples', rows.splice(0)); target.emit('press', r[0] + shift); }
+        if (!released && r[0] >= swing.releaseT) { released = true; target.emit('samples', rows.splice(0)); target.emit('release', r[0] + shift); }
+        rows.push(move(r));
       }
       if (rows.length) target.emit('samples', rows);
       if (i >= swing.samples.length) { clearInterval(timer); resolve(); }

@@ -115,6 +115,21 @@ export function makeSignature(swing) {
     axis: axis.map((v) => r3(v / axisSum)),
     follow: r3(nf ? follow / nf : 0),
   };
+  if (gyro) {
+    // MotionPlus only. Peak turning rate of the remote, and how the turning splits across its axes.
+    // The split says how much of the swing is wrist twist and how much is arm.
+    let spin = 0;
+    const turn = [0, 0, 0];
+    for (const r of inSwing) {
+      if (r[4] == null) continue;
+      const w = Math.hypot(r[4], r[5], r[6]);
+      if (w > spin) spin = w;
+      turn[0] += r[4] ** 2; turn[1] += r[5] ** 2; turn[2] += r[6] ** 2;
+    }
+    const turnSum = turn[0] + turn[1] + turn[2] || 1;
+    feat.spin = Math.round(spin);
+    feat.turn = turn.map((v) => r3(v / turnSum));
+  }
   return { seq, feat, gyro };
 }
 
@@ -147,13 +162,20 @@ export function dtw(a, b, useGyro, band = 8) {
 export function featureDistance(fa, fb) {
   const ln = (x, y) => Math.abs(Math.log(Math.max(x, 1e-3) / Math.max(y, 1e-3)));
   const axis = (Math.abs(fa.axis[0] - fb.axis[0]) + Math.abs(fa.axis[1] - fb.axis[1]) + Math.abs(fa.axis[2] - fb.axis[2])) / 2;
+  // Turning features exist only when both swings were recorded with a MotionPlus.
+  let turning = 0;
+  if (fa.turn && fb.turn) {
+    const split = (Math.abs(fa.turn[0] - fb.turn[0]) + Math.abs(fa.turn[1] - fb.turn[1]) + Math.abs(fa.turn[2] - fb.turn[2])) / 2;
+    turning = 0.6 * ln(fa.spin, fb.spin) + 1.2 * split;
+  }
   return (
     1.0 * ln(fa.dur, fb.dur) +
     0.8 * ln(fa.peak, fb.peak) +
     2.0 * Math.abs(fa.tPeak - fb.tPeak) +
     1.5 * Math.abs(fa.early - fb.early) +
     1.5 * axis +
-    1.0 * Math.abs(fa.follow - fb.follow)
+    1.0 * Math.abs(fa.follow - fb.follow) +
+    turning
   );
 }
 
