@@ -8,7 +8,13 @@ import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { EV_KEY, EV_ABS, EV_SYN, SYN_REPORT, BUTTON_NAMES } from './evdev.mjs';
 import { Normalizer } from './normalize.mjs';
-import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes } from './reader.mjs';
+import {
+  scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes, readAbsValues,
+  accelZeroFromEnv, loadEnv, ABS_CODES,
+} from './reader.mjs';
+import { DEFAULT_COUNTS_PER_G } from './normalize.mjs';
+
+loadEnv();
 
 const secondsIndex = process.argv.indexOf('--seconds');
 const seconds = secondsIndex >= 0 ? Number(process.argv[secondsIndex + 1]) || 6 : 6;
@@ -90,7 +96,10 @@ if (remotes.length > 1) report('info', 'Wii remote', `${remotes.length} remotes 
 const ROLES = ['buttons', 'accel', 'gyro', 'ir'];
 const seen = Object.fromEntries(ROLES.map((r) => [r, { opened: false, error: null, frames: 0 }]));
 const pressed = new Set();
-const norm = new Normalizer();
+const norm = new Normalizer({
+  countsPerG: Number(process.env.BOWLBANK_ACCEL_COUNTS_PER_G) || DEFAULT_COUNTS_PER_G,
+  zero: accelZeroFromEnv(),
+});
 let accelSum = 0;
 let accelCount = 0;
 let lastAccel = null;
@@ -142,6 +151,10 @@ for (const role of ROLES) {
       if (err) seen[role].error = err;
     },
   ));
+  if (ABS_CODES[role]) {
+    const values = readAbsValues(path, ABS_CODES[role]);
+    if (values) norm.seed(role, values);
+  }
 }
 
 console.log(`\nReading the remote for ${seconds} seconds.`);
@@ -167,8 +180,8 @@ else if (seen.accel.frames > 0) {
   const mean = (accelSum / accelCount).toFixed(2);
   const last = lastAccel.map((v) => v.toFixed(2)).join(', ');
   report('ok', 'Accelerometer', `verified working (${seen.accel.frames} samples,${rate} mean size ${mean} g, last [${last}] g)`);
-  if (accelCount > 20 && (mean < 0.8 || mean > 1.25) && seen.accel.frames < seconds * 30) {
-    report('info', 'Accelerometer', `a still remote should read close to 1.00 g. Set BOWLBANK_ACCEL_COUNTS_PER_G=${Math.round(104 * mean)} to correct it.`);
+  if (!process.env.BOWLBANK_ACCEL_ZERO) {
+    report('info', 'Accelerometer', 'not calibrated for this remote, so a still remote can read 0.8 to 1.2 g. Run: node bridge/calibrate.mjs');
   }
 } else report('warn', 'Accelerometer', 'detected and readable, but no samples arrived', 'Move the remote while the check runs. The kernel only reports changes.');
 

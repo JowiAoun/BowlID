@@ -31,6 +31,24 @@ Run `./scripts/check-controller.sh`. Press buttons, move the remote and point it
 
 Every line that is not OK comes with a fix. The exit code is 0 when the remote can be used to bowl.
 
+## Calibrate the accelerometer
+
+Every remote reads a little off zero. Without calibration, a still remote reads between 0.8 and 1.2 g, depending on how it lies.
+
+1. Run `node bridge/calibrate.mjs`.
+2. Lay the remote still for 2 seconds in each position: face up, face down, on each side, standing on each end. It needs at least 4.
+3. Copy the two lines it prints into the `.env` file at the repo root.
+4. Restart the bridge.
+
+For the team's remote (Bluetooth address ending `31:6B`), measured on 2026-11-15:
+
+```
+BOWLBANK_ACCEL_ZERO=-13,-19,-23
+BOWLBANK_ACCEL_COUNTS_PER_G=103.5
+```
+
+With these, the remote lying face up reads about `[0, 0, 1]` g.
+
 ## When the kernel driver cannot start
 
 The remote can connect over Bluetooth and still give no input. The kernel log (`journalctl -k | grep -i wiimote`) then says:
@@ -57,6 +75,7 @@ Run `./scripts/start.sh`, then open http://localhost:5173/?mode=wii. Ctrl+C stop
 
 - `./scripts/start.sh --demo` starts the app without the bridge. This is what runs on a Mac.
 - `npm run bridge` starts the bridge alone. It prints one line each time the remote's state changes.
+- The bridge reads `BOWLBANK_BRIDGE_PORT`, `BOWLBANK_ACCEL_ZERO` and `BOWLBANK_ACCEL_COUNTS_PER_G` from the environment, or from `.env` at the repo root.
 
 ## Replay a recorded swing
 
@@ -79,9 +98,10 @@ JSON text messages, one per WebSocket frame.
 | `ir` | `t` and `pts`: the visible points as `[x, y]` from 0 to 1, at most 50 times a second. Empty when the camera sees no light. |
 
 - `t` is in ms on one clock that never goes back.
-- `ax, ay, az` are in g. The driver reports raw counts and the bridge divides by 104. A remote lying still reads about 1 g in total.
+- `ax, ay, az` are in g. The driver reports raw counts. The bridge takes off the zero offset and divides by the counts per g (104 unless calibrated). A remote lying face up reads about `[0, 0, 1]`.
 - `gx, gy, gz` are in deg/s: pitch, roll and yaw. All three are `null` without a MotionPlus.
-- The kernel only reports values that change. When the remote is still, the bridge sends its last real reading again so the stream keeps its rhythm.
+- The kernel only reports values that change. When the remote is still, the bridge sends its last real reading again so the stream keeps its rhythm. It reads the starting value of each axis when it opens the device (with `bridge/absread.py`, which needs `python3`). Without `python3`, no sample is sent until all three axes have reported once.
+- `ir` messages only arrive when the camera's view changes. No message means the last one still holds.
 
 A recorded swing file looks like this:
 
@@ -100,6 +120,6 @@ A recorded swing file looks like this:
 | The `hid-wiimote` driver is missing | Run `sudo apt install linux-modules-extra-$(uname -r)`. |
 | MotionPlus not detected | Push it fully into the remote and wait 5 seconds. The app works without it. |
 | Infrared sees no light | Plug in the sensor bar and stand 1 to 3 metres away. Sunlight and candles confuse the camera. Aiming falls back to the D-pad. |
-| The size of the resting acceleration is far from 1.00 g | Set `BOWLBANK_ACCEL_COUNTS_PER_G` to the value the check suggests. |
+| A still remote does not read 1.00 g | Calibrate it: `node bridge/calibrate.mjs`. |
 | `Port 8765 is in use` | Another bridge or replay is running. Stop it, or set `BOWLBANK_BRIDGE_PORT`. |
 | The remote turned off mid-demo | Press any button. The bridge finds it again within a second and the app carries on. |

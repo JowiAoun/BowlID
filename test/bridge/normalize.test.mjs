@@ -14,7 +14,9 @@ function setup() {
   };
   const abs = (role, code, value, ms) => norm.push(role, { ms: at(ms), type: EV_ABS, code, value });
   const syn = (role, ms) => norm.push(role, { ms: at(ms), type: EV_SYN, code: 0, value: 0 });
-  return { norm, clock, at, abs, syn };
+  // The state a freshly opened accelerometer is seeded with: lying flat, 1 g on z.
+  const flat = () => norm.seed('accel', { [ABS_RX]: 0, [ABS_RY]: 0, [ABS_RZ]: 100 });
+  return { norm, clock, at, abs, syn, flat };
 }
 
 test('accelerometer frames become samples in g with null gyro', () => {
@@ -34,7 +36,8 @@ test('accelerometer frames become samples in g with null gyro', () => {
 });
 
 test('gyro is in deg/s, ordered pitch, roll, yaw, and goes null when stale', () => {
-  const { norm, abs, syn } = setup();
+  const { norm, abs, syn, flat } = setup();
+  flat();
   abs('gyro', ABS_RX, Math.round(GYRO_UNITS_PER_DPS * 30), 0);
   abs('gyro', ABS_RY, Math.round(GYRO_UNITS_PER_DPS * -20), 0);
   abs('gyro', ABS_RZ, Math.round(GYRO_UNITS_PER_DPS * 10), 0);
@@ -51,7 +54,8 @@ test('gyro is in deg/s, ordered pitch, roll, yaw, and goes null when stale', () 
 });
 
 test('timestamps never go back, even when event times do', () => {
-  const { norm, clock } = setup();
+  const { norm, clock, flat } = setup();
+  flat();
   const send = (ms) => {
     norm.push('accel', { ms: WALL + ms, type: EV_ABS, code: ABS_RX, value: ms });
     norm.push('accel', { ms: WALL + ms, type: EV_SYN, code: 0, value: 0 });
@@ -67,8 +71,9 @@ test('timestamps never go back, even when event times do', () => {
 });
 
 test('a still remote keeps sending its last real reading', () => {
-  const { norm, clock, abs, syn } = setup();
+  const { norm, clock, abs, syn, flat } = setup();
   assert.equal(norm.flushSamples(), null);
+  flat();
   abs('accel', ABS_RZ, 100, 0);
   syn('accel', 0);
   assert.equal(norm.flushSamples().s.length, 1);
@@ -136,4 +141,25 @@ test('an IR frame that came too soon is sent on the next flush, so losing the li
   clock.now += 15;
   assert.deepEqual(norm.flushIr().pts, []);
   assert.equal(norm.flushIr(), null);
+});
+
+test('no sample is sent until all three accelerometer axes are known', () => {
+  const { norm, clock, abs, syn } = setup();
+  // The kernel only reports the axis that changed. The other two are still unknown.
+  abs('accel', ABS_RZ, 90, 0);
+  syn('accel', 0);
+  clock.now += 20;
+  assert.equal(norm.flushSamples(), null);
+  abs('accel', ABS_RX, 10, 30);
+  abs('accel', ABS_RY, -20, 30);
+  syn('accel', 30);
+  assert.deepEqual(norm.flushSamples().s, [[1030, 0.1, -0.2, 0.9, null, null, null]]);
+});
+
+test('seeded start values count as known, and zero offsets are taken off', () => {
+  const clock = { now: 1000 };
+  const norm = new Normalizer({ countsPerG: 100, zero: [-10, -20, -30], now: () => clock.now });
+  norm.seed('accel', { [ABS_RX]: -10, [ABS_RY]: -20, [ABS_RZ]: 70 });
+  clock.now += 20;
+  assert.deepEqual(norm.flushSamples().s, [[1020, 0, 0, 1, null, null, null]]);
 });

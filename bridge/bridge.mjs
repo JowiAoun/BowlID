@@ -4,8 +4,13 @@
 // It never makes data up. With no remote, it says so and keeps looking.
 
 import { Normalizer, DEFAULT_COUNTS_PER_G } from './normalize.mjs';
-import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes, TEST_DEVICES } from './reader.mjs';
+import {
+  scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes, readAbsValues,
+  accelZeroFromEnv, loadEnv, ABS_CODES, TEST_DEVICES,
+} from './reader.mjs';
 import { startServer } from './server.mjs';
+
+loadEnv();
 
 const SCAN_MS = Number(process.env.BOWLBANK_SCAN_MS) || 1000;
 const FLUSH_MS = 20;
@@ -15,7 +20,7 @@ const MSG_LOST = 'Wii remote disconnected. Press any button on it to reconnect.'
 const MSG_NO_DRIVER = 'A Wii remote is connected over Bluetooth, but the kernel driver could not start for it. Run ./scripts/fix-driver.sh.';
 
 const countsPerG = Number(process.env.BOWLBANK_ACCEL_COUNTS_PER_G) || DEFAULT_COUNTS_PER_G;
-const norm = new Normalizer({ countsPerG });
+const norm = new Normalizer({ countsPerG, zero: accelZeroFromEnv() });
 const server = startServer({ source: 'wii' });
 
 // The remote in use: its HID id and one open reader per part.
@@ -82,6 +87,11 @@ function openPart(role, path) {
       else publish();
     },
   );
+  // The device is open, so the sensor is on. Ask where its axes are right now.
+  if (ABS_CODES[role]) {
+    const values = readAbsValues(path, ABS_CODES[role]);
+    if (values) norm.seed(role, values);
+  }
 }
 
 function scan() {

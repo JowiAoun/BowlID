@@ -1,6 +1,8 @@
 // Finds the Wii remote's input devices and reads their raw events.
 
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { parseInputEvents, parseProcDevices, findWiiRemotes, isWiimoteHidId } from './evdev.mjs';
 
 // The automated tests point these at made-up devices. Nothing else should set them.
@@ -101,5 +103,45 @@ export function unboundWiiRemotes() {
       .filter((id) => !fs.existsSync(`/sys/bus/hid/devices/${id}/driver`));
   } catch {
     return [];
+  }
+}
+
+const ABSREAD = fileURLToPath(new URL('./absread.py', import.meta.url));
+
+// The current value of some absolute axes, as { code: value }. Null when it cannot be read
+// (python3 missing, or a made-up test device). The caller then waits for the axes to report.
+export function readAbsValues(path, codes) {
+  if (TEST_DEVICES) return null;
+  try {
+    const out = execFileSync('python3', ['-I', ABSREAD, path, ...codes.map(String)], {
+      encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const values = out.trim().split(/\s+/).map(Number);
+    if (values.length !== codes.length || !values.every(Number.isFinite)) return null;
+    return Object.fromEntries(codes.map((code, i) => [code, values[i]]));
+  } catch {
+    return null;
+  }
+}
+
+// The axis codes of each part that has absolute axes.
+export const ABS_CODES = {
+  accel: [3, 4, 5],
+  gyro: [3, 4, 5],
+  ir: [16, 17, 18, 19, 20, 21, 22, 23],
+};
+
+// The accelerometer zero offsets from BOWLBANK_ACCEL_ZERO, like "-13,-19,-23". Raw counts.
+export function accelZeroFromEnv() {
+  const parts = (process.env.BOWLBANK_ACCEL_ZERO || '').split(',').map((v) => Number(v.trim()));
+  return parts.length === 3 && parts.every(Number.isFinite) ? parts : [0, 0, 0];
+}
+
+// Read BOWLBANK_* settings from the .env file at the repo root. Values already set win.
+export function loadEnv() {
+  try {
+    process.loadEnvFile(fileURLToPath(new URL('../.env', import.meta.url)));
+  } catch {
+    // No .env file, or a Node version without loadEnvFile. Both are fine.
   }
 }

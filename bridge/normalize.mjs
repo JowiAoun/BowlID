@@ -28,8 +28,11 @@ const round = (v, places) => {
 };
 
 export class Normalizer {
-  constructor({ countsPerG = DEFAULT_COUNTS_PER_G, now = () => performance.now() } = {}) {
+  // `zero` is what the remote reads on each axis with no force on it, in raw counts.
+  // It should be 0, but every remote is off by a few counts. See bridge/calibrate.mjs.
+  constructor({ countsPerG = DEFAULT_COUNTS_PER_G, zero = [0, 0, 0], now = () => performance.now() } = {}) {
     this.countsPerG = countsPerG;
+    this.zero = zero;
     this.now = now;
     this.reset();
   }
@@ -38,6 +41,7 @@ export class Normalizer {
     this.clockOffset = null;
     this.lastT = 0;
     this.accel = [0, 0, 0];
+    this.accelSeen = [false, false, false];
     this.hasAccel = false;
     this.gyro = [0, 0, 0];
     this.gyroT = -Infinity;
@@ -70,6 +74,13 @@ export class Normalizer {
     this.lastSampleT = t;
   }
 
+  // Set where the axes of a part are right now, as read from the device when it was opened.
+  seed(role, values) {
+    for (const [code, value] of Object.entries(values)) {
+      this.push(role, { ms: 0, type: EV_ABS, code: Number(code), value });
+    }
+  }
+
   // Feed one event from one part of the remote. Returns messages to send right away.
   push(role, ev) {
     const out = [];
@@ -79,12 +90,13 @@ export class Normalizer {
         out.push({ type: 'button', t: round(this.time(ev.ms), 2), name: BUTTON_NAMES[ev.code], down: ev.value === 1 });
       }
     } else if (role === 'accel') {
-      if (ev.type === EV_ABS) {
-        const g = round(ev.value / this.countsPerG, 4);
-        if (ev.code === ABS_RX) this.accel[0] = g;
-        else if (ev.code === ABS_RY) this.accel[1] = g;
-        else if (ev.code === ABS_RZ) this.accel[2] = g;
-        this.hasAccel = true;
+      if (ev.type === EV_ABS && ev.code >= ABS_RX && ev.code <= ABS_RZ) {
+        const axis = ev.code - ABS_RX;
+        this.accel[axis] = round((ev.value - this.zero[axis]) / this.countsPerG, 4);
+        this.accelSeen[axis] = true;
+        // The kernel only sends an axis when it changes. Until all three are known,
+        // a sample would hold a made-up zero, so none is sent.
+        this.hasAccel = this.accelSeen.every(Boolean);
       } else if (ev.type === EV_SYN && ev.code === SYN_REPORT && this.hasAccel) {
         this.pushSample(this.time(ev.ms));
       }
