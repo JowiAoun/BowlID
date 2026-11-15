@@ -10,11 +10,11 @@ The whole product is one metric: the Bowlometric Identity Score, a number that d
 
 ## Devpost description
 
-**BowlBank: your money, your swing.**
+**Bowlometrics: your money, your swing.**
 
 Passwords get stolen. Fingerprints get copied. Nobody has ever stolen a backswing.
 
-BowlBank is a bank where your password is how you bowl. You open an account by bowling three times with a Wii remote. To sign in, you bowl again. The bank compares the motion of your swing with the swings on file and gives you a Bowlometric Identity Score out of 100. Score 70 or more and you are in.
+Bowlometrics is a bank where your password is how you bowl. You open an account by bowling three times with a Wii remote. To sign in, you bowl again. The bank compares the motion of your swing with the swings on file and gives you a Bowlometric Identity Score out of 100. Score 70 or more and you are in.
 
 The pins have nothing to do with it. Bowl a strike with the wrong swing and you are declined. Bowl your usual gutter ball and the bank welcomes you back.
 
@@ -37,8 +37,8 @@ The score is a similarity measure. It is not a probability and it is not securit
 
 Fill in the names, handles and the demo link before posting.
 
-> **BowlBank: your money, your swing** 🎳
-> BowlBank is a bank where your password is how you bowl. You open an account by bowling with a Wii remote, and to sign in you bowl again while the bank checks your swing against the one on file. The pins do not matter: a strike with the wrong swing is declined, and the owner's gutter ball is approved. Every attempt gets a Bowlometric Identity Score out of 100. Try it in your browser with no hardware at the demo link.
+> **Bowlometrics: your money, your swing** 🎳
+> Bowlometrics is a bank where your password is how you bowl. You open an account by bowling with a Wii remote, and to sign in you bowl again while the bank checks your swing against the one on file. The pins do not matter: a strike with the wrong swing is declined, and the owner's gutter ball is approved. Every attempt gets a Bowlometric Identity Score out of 100. Try it in your browser with no hardware at the demo link.
 >
 > Team: NAME (`@handle`), NAME (`@handle`), NAME (`@handle`)
 > GitHub: https://github.com/thomasnol/proof-of-human
@@ -59,7 +59,7 @@ Two people on stage. Person A owns the account. Person B is the thief. Open the 
 | 0:42 | both | The stamp says DECLINED. Read the line on screen out loud. |
 | 0:48 | A | "He got a strike. I got my money." |
 | 0:52 | A | Point at the ledger at the bottom. "We track the only two numbers that matter: strikes declined and gutter balls approved." |
-| 0:58 | A | "BowlBank. Your money. Your swing." |
+| 0:58 | A | "Bowlometrics. Your money. Your swing." |
 
 Nothing here is rigged. B's result is whatever the matcher says. Rehearse with B a few times first. If B keeps getting approved, have B swing in their own natural way and not copy A, or enrol A again with a more personal wind-up.
 

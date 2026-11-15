@@ -1,4 +1,4 @@
-# BowlBank
+# Bowlometrics
 
 A bank where your password is how you bowl. 🎳
 
@@ -88,7 +88,7 @@ Events carry the score, the verdict and the pin count. They never carry names, a
 1. Run `npx wrangler login` once.
 2. Run `npm run deploy`
 
-This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlbank` project. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
+This builds the site and publishes `dist/` to Cloudflare Pages as the `bowlometrics` project. The public site runs in demo mode. The Wii remote only works on the laptop that runs the bridge.
 
 ## Technologies
 

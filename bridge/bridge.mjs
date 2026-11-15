@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// BowlBank input bridge. Reads a real Wii remote through the kernel hid-wiimote driver
+// Bowlometrics input bridge. Reads a real Wii remote through the kernel hid-wiimote driver
 // and sends its buttons, motion and IR points to the browser on ws://127.0.0.1:8765.
 // It never makes data up. With no remote, it says so and keeps looking.
 
@@ -114,7 +114,7 @@ function scan() {
 
 server.ready.then(
   () => {
-    console.log(`BowlBank bridge listening on ws://127.0.0.1:${server.port}`);
+    console.log(`Bowlometrics bridge listening on ws://127.0.0.1:${server.port}`);
     if (TEST_DEVICES) console.log('TEST MODE: reading made-up devices. This is not a real Wii remote.');
     scan();
     setInterval(scan, SCAN_MS);

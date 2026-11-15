@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start BowlBank: the Wii remote bridge and the web app. Ctrl+C stops both.
+# Start Bowlometrics: the Wii remote bridge and the web app. Ctrl+C stops both.
 # Usage: ./scripts/start.sh          Live Wii mode (Linux).
 #        ./scripts/start.sh --demo   Browser demo only, no bridge. This is the default off Linux.
 set -u
