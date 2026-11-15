@@ -99,14 +99,14 @@ export function hidIdFromSysfs(sysfs) {
 }
 
 // Group Wii remote input devices by remote. Each remote has up to four parts.
-export function findWiiRemotes(devices) {
+export function findWiiRemotes(devices, inputDir = '/dev/input') {
   const remotes = new Map();
   for (const dev of devices) {
     const role = wiimoteRole(dev.name);
     if (!role || !dev.event) continue;
     const id = hidIdFromSysfs(dev.sysfs) || dev.uniq || dev.phys || 'wiimote';
     if (!remotes.has(id)) remotes.set(id, { id, parts: {} });
-    remotes.get(id).parts[role] = `/dev/input/${dev.event}`;
+    remotes.get(id).parts[role] = `${inputDir}/${dev.event}`;
   }
   return [...remotes.values()];
 }

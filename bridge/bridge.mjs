@@ -4,10 +4,10 @@
 // It never makes data up. With no remote, it says so and keeps looking.
 
 import { Normalizer, DEFAULT_COUNTS_PER_G } from './normalize.mjs';
-import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes } from './reader.mjs';
+import { scanRemotes, openEventDevice, readHidAttr, unboundWiiRemotes, TEST_DEVICES } from './reader.mjs';
 import { startServer } from './server.mjs';
 
-const SCAN_MS = 1000;
+const SCAN_MS = Number(process.env.BOWLBANK_SCAN_MS) || 1000;
 const FLUSH_MS = 20;
 
 const MSG_NONE = 'No Wii remote found. Press 1+2 on the remote, or run ./scripts/pair-wiimote.sh.';
@@ -24,6 +24,8 @@ let everConnected = false;
 let permissionProblem = null;
 
 function deviceLabel(id) {
+  // Made-up devices from the automated tests are always labelled, so they cannot pass as a real remote.
+  if (TEST_DEVICES) return 'Test devices (not a real Wii remote)';
   const devtype = readHidAttr(id, 'devtype');
   return devtype && devtype !== 'pending' ? `Nintendo Wii Remote (${devtype})` : 'Nintendo Wii Remote';
 }
@@ -103,6 +105,7 @@ function scan() {
 server.ready.then(
   () => {
     console.log(`BowlBank bridge listening on ws://127.0.0.1:${server.port}`);
+    if (TEST_DEVICES) console.log('TEST MODE: reading made-up devices. This is not a real Wii remote.');
     scan();
     setInterval(scan, SCAN_MS);
     setInterval(() => {

@@ -3,12 +3,15 @@
 import fs from 'node:fs';
 import { parseInputEvents, parseProcDevices, findWiiRemotes, isWiimoteHidId } from './evdev.mjs';
 
-export const PROC_DEVICES = '/proc/bus/input/devices';
+// The automated tests point these at made-up devices. Nothing else should set them.
+export const TEST_DEVICES = Boolean(process.env.BOWLBANK_TEST_PROC_DEVICES);
+export const PROC_DEVICES = process.env.BOWLBANK_TEST_PROC_DEVICES || '/proc/bus/input/devices';
+const INPUT_DIR = process.env.BOWLBANK_TEST_INPUT_DIR || '/dev/input';
 
 // The remotes the kernel driver has set up right now. Empty when none is connected.
 export function scanRemotes() {
   try {
-    return findWiiRemotes(parseProcDevices(fs.readFileSync(PROC_DEVICES, 'utf8')));
+    return findWiiRemotes(parseProcDevices(fs.readFileSync(PROC_DEVICES, 'utf8')), INPUT_DIR);
   } catch {
     return [];
   }
@@ -91,6 +94,7 @@ export function readHidAttr(hidId, attr) {
 // Wii remotes that are connected over Bluetooth but have no kernel driver attached.
 // This happens when the hid-wiimote driver failed to start for that remote.
 export function unboundWiiRemotes() {
+  if (TEST_DEVICES) return [];
   try {
     return fs.readdirSync('/sys/bus/hid/devices')
       .filter(isWiimoteHidId)
