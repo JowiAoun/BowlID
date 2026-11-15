@@ -1,8 +1,114 @@
-# BowlBank
+# BowlID
+
+No usernames. No passwords. Your account is how you bowl. 🎳
+
+The page has two buttons and nowhere to type. "Create your bowling identity" opens a familiar CAPTCHA-style window with a whole bowling game inside it. You pick up the Wii remote and bowl three times, and the site keeps your swing on file. To come back, press "Log in with your swing" and bowl once. The site compares that one swing with everyone on file and opens the account it belongs to.
+
+Nobody is asked who they are. Two people can pass the same remote back and forth and land in two different accounts.
+
+The pins decide nothing. A gutter ball from the right arm gets in. A strike from a stranger is turned away.
+
+Made for the Stupid Ideas Hackathon (Ottawa F26). Tracks: General, Stupidest Metric. This is a joke, not security, and there is no real money in the bank behind it.
+
+## The metric
+
+**The Bowlometric Identity Score**: 0 to 100, how close this swing is to the closest customer on file. 70 and up passes. It is a similarity measure and not a probability.
+
+The branch ledger under the front page keeps four more, all counted from real bowls:
+
+- Gutter balls let in.
+- Strikes turned away.
+- Identity crises: bowls that fit two customers at once.
+- Bowls to recognise yourself.
+
+With an Amplitude key set, `login_bowl`, `login_done` and `identity_created` events carry the same numbers (`bowlometric_identity_score`, `bowls_to_recognise_yourself`, `pins_before_account_access`, `got_in_on_a_gutter_ball`). Events never carry names, account numbers or swing data.
+
+## Run it
+
+Anywhere, with a mouse or a touch screen:
+
+1. Run `npm install`
+2. Run `npm run dev`
+3. Open http://localhost:5173/
+
+On the Ubuntu demo laptop, with the Wii remote:
+
+1. Run `./scripts/pair-wiimote.sh` and press the red SYNC button under the battery cover.
+2. Run `./scripts/start.sh`
+3. Open http://localhost:5173/?mode=wii
+
+## Controls
+
+| | Aim | Bowl | Menus |
+|---|---|---|---|
+| Wii remote | Point at the screen, or D-pad | Hold B, swing back, swing forward, let go of B | A is "Log in" on the front page and the main button after that. 2 is "Create". HOME cancels. `-` mutes. `1` recentres the aim. |
+| Mouse or touch | Move over the lane | Press, pull back, flick forward, let go | Click |
+| Keyboard | Left and right arrows | Hold Space, let go when the power bar is high | Esc cancels |
+
+A pointer swing is a simulation and the app says so on screen. Pointer identities and Wii identities are kept apart and never compared. The keyboard can bowl but records no swing, so it cannot create an account or log in.
+
+## How a swing becomes an account
+
+1. **Record.** The remote's three-axis accelerometer is read at about 100 Hz from 250 ms before B is pressed to 400 ms after it is let go. With a MotionPlus attached, three axes of turning rate are recorded too.
+2. **Signature.** The swing is resampled to 64 points per axis with the release always at the same point. Timing features are added: how long the swing took, how hard it peaked, how long after the peak the button was released, how much of the effort came early, how the motion splits across axes, and how much the arm kept moving afterwards. With a MotionPlus, the peak turning rate and how the turning splits across axes are added.
+3. **Distance.** Two signatures are compared with dynamic time warping over the waveforms plus the feature differences.
+4. **Profile.** Three enrollment throws make a profile. Its accept distance comes from how much the three throws differ from each other. A throw that looks nothing like the other two is struck out and replaced.
+5. **Identify.** A log-in swing is compared with every profile recorded with the same kind of input. There are four answers:
+   - **Recognised**: one customer fits and no other is close.
+   - **Identity crisis**: a second customer fits nearly as well. Nobody is let in.
+   - **Inconclusive**: close to somebody but not close enough. Bowl again, up to three times.
+   - **Unknown**: nobody fits. The nearest customer is never chosen just for being nearest.
+6. **Enrollment check.** A new profile that sits on top of an existing customer is sent back once for a more personal swing. If it is still a twin, the account opens and both customers can expect identity crises.
+
+The report after each bowl shows the measured numbers next to the ones on file, and a graph of the force over the swing. Every row is a real measurement. The remote cannot see a body or an arm, so nothing in the report claims to.
+
+Pin count, ball speed and aim are worked out separately in `web/src/game/throw.js` and never reach the matcher.
+
+## Measure it on real people
+
+The thresholds in `MATCH_CONFIG` (`web/src/motion/matcher.js`) were set on swings made by a formula. They have to be checked on real throws.
+
+1. Each person opens http://localhost:5173/?mode=wii&who=theirname
+2. Click "Practice lane" and bowl at least 8 times. The status line also says who the swing would have opened.
+3. Click "Export recorded swings" on the front page and move the file into `recordings/`.
+4. Run `npm run evaluate`
+
+It enrolls each person on their first three throws and tests the rest. It reports how often a person opens their own account, how often they open somebody else's, how often a stranger gets in, and how often the answer is a crisis or a retry, with sample counts.
+
+Run `npm run evaluate -- --synthetic` to check the tool itself on made-up swings.
+
+## Deploy
+
+1. Run `npx wrangler login` once.
+2. Run `npm run deploy:bowlid`
+
+This publishes `dist/` to Cloudflare Pages as the `bowlid` project. The public site works with a pointer on any laptop, and it has a labelled sample customer whose formula swing can be replayed.
+
+The Wii remote is read by a small program on the Ubuntu laptop, which only listens on that laptop. So the remote works on that laptop and nowhere else: hand a judge the remote and our screen. Accounts live in that browser's storage, so enroll on the laptop and in the browser that will be used on stage.
+
+## How it is built
+
+- `web/src/main.js`: the front page, the challenge window, the report and the account.
+- `web/src/id/store.js` and `copy.js`: the accounts kept in the browser, and everything BowlID says.
+- `web/src/motion/signal.js` and `matcher.js`: the swing signature, the distance, the profiles and the identification.
+- `web/src/game/`: the hall, the bowler, the robot spectators, the pin physics and the sounds. The sounds are made with Web Audio and there are no sound files.
+- `web/src/input/sources.js` and `bridge/`: the Wii remote, the pointer, and the bridge between the remote and the browser.
+- `tools/evaluate.mjs`: the measurement described above.
+
+## What was tested
+
+- `npm test`: 42 tests. The matcher tests use swings made by a formula.
+- The whole flow in a headless Chrome on a Mac, with formula swings fed through the same path the pointer uses: two people create accounts, each logs in to their own, one of them on a gutter ball, a third person is turned away, a twin is sent back at enrollment, and a twin's log-in is flagged as an identity crisis. The sample customer replay was checked too.
+- **Not tested: real people on the real Wii remote.** Nobody has yet been identified by this version from a real swing. The matcher has only seen formula swings, which are far tidier than a person. Run the measurement above on the Ubuntu laptop before trusting it on stage.
+- The public deploy has not been run from this machine.
+
+---
+
+# BowlBank (the earlier version, still here at `/bank.html`)
 
 A bank where your password is how you bowl. 🎳
 
-You open a fake bank account by bowling with a Wii remote. To get back in, you bowl again and the bank compares your swing with the one on file. The pins do not matter. A strike can be declined and a gutter ball can be approved.
+In this version you pick your name from a list first, and the bank checks your swing against that one account. BowlID above dropped the list.
 
 Made for the Stupid Ideas Hackathon (Ottawa F26). No real money or banking is involved.
 
