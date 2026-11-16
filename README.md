@@ -97,6 +97,7 @@ Then open http://localhost:5173/ and bowl with your mouse. The Wii remote, the c
 - **Jowi Aoun** ([@JowiAoun](https://github.com/JowiAoun)): the Wii remote bridge and scripts, the swing matcher, the pin physics, tilt and spin, the voices and music.
 - **Ishar** ([@isharghura](https://github.com/isharghura)): the username login and its CAPTCHA window, the report and the attempts log, the bowler, the robots and the retro hall.
 - **Thomas** ([@thomasnol](https://github.com/thomasnol)): the first plan and the first playable prototype.
+- **Ashwin** ([@AshwinSri23](https://github.com/AshwinSri23)): helped finalize the project design and also worked on building the prototype.
 
 ## License
 
