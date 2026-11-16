@@ -2,7 +2,7 @@
 
 # Bowl ID
 
-#### Stupidest Metric | A login with no password field: your password is how you bowl
+#### 🏆 Amplitude Award Winner | A login with no password field: your password is how you bowl
 
 Type a username, pick up a Wii remote and bowl. The site checks your swing and ignores your pins.<br>
 A gutter ball from the right arm gets in. A strike from a stranger is turned away.
